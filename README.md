@@ -211,15 +211,6 @@ vulnq is released under the Apache License 2.0. See [LICENSE](LICENSE) for detai
 - **Discussions**: [GitHub Discussions](https://github.com/scanoss/vulnq/discussions)
 - **Security**: Report vulnerabilities to security@scanoss.com
 
-## Related Projects
-
-vulnq is part of the SEMCL.ONE toolchain:
-
-- [ospac](https://github.com/scanoss/ospac) - Policy as Code for license compliance
-- [src2purl](https://github.com/scanoss/src2purl) - Generate PURLs from source code
-- [osslili](https://github.com/scanoss/osslili) - License detection in source code
-- [upmex](https://github.com/scanoss/upmex) - Package metadata extraction
-
 ---
 
 *Part of the [SEMCL.ONE](https://github.com/scanoss/semcl.one) Software Composition Analysis toolchain*
