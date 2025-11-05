@@ -208,7 +208,7 @@ vulnq is released under the Apache License 2.0. See [LICENSE](LICENSE) for detai
 
 - **Issues**: [GitHub Issues](https://github.com/SemClone/vulnq/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/SemClone/vulnq/discussions)
-- **Security**: Report vulnerabilities to security@scanoss.com
+- **Security**: Report vulnerabilities to security@semcl.one
 
 ---
 
