@@ -36,11 +36,10 @@ pip install -e .
 # Query using Package URL (auto-detected)
 vulnq pkg:npm/express@4.17.1
 
-# Query using CPE string
-vulnq --cpe "cpe:2.3:a:nodejs:node.js:14.17.0:*:*:*:*:*:*:*"
+# Query using CPE string (example: Apache Log4j)
+vulnq --cpe "cpe:2.3:a:apache:log4j:2.14.0:*:*:*:*:*:*:*"
 
-# Query using file hash
-vulnq --sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# Note: Hash-based queries are not currently supported by vulnerability databases
 
 # Query multiple identifiers from file
 vulnq --input packages.txt
@@ -67,10 +66,10 @@ vq = VulnerabilityQuery()
 results = vq.query("pkg:npm/express@4.17.1")
 
 # Query by CPE
-results = vq.query_cpe("cpe:2.3:a:nodejs:node.js:14.17.0:*:*:*:*:*:*:*")
+results = vq.query_cpe("cpe:2.3:a:apache:log4j:2.14.0:*:*:*:*:*:*:*")
 
-# Query by hash
-results = vq.query_hash("sha256", "abc123...")
+# Note: Hash queries are not currently supported by vulnerability databases
+# Future versions may support this through file-to-package mapping services
 
 # Process results
 for vuln in results.vulnerabilities:
