@@ -1,0 +1,64 @@
+name: License Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-licenses
+
+    - name: Check licenses
+      run: |
+        pip install -e .
+        pip-licenses --format=markdown --with-urls --with-description > licenses.md
+
+    - name: Display license summary
+      run: |
+        echo "## License Summary"
+        pip-licenses --summary
+
+    - name: Check for copyleft licenses
+      run: |
+        # Check for strong copyleft licenses that might be incompatible
+        COPYLEFT_LICENSES="GPL|AGPL|LGPL|MPL"
+        if pip-licenses --format=json | grep -iE "$COPYLEFT_LICENSES"; then
+          echo "Warning: Copyleft licenses detected. Please review for compatibility."
+          pip-licenses --format=json | python -c "
+import json
+import sys
+data = json.load(sys.stdin)
+copyleft = ['GPL', 'AGPL', 'LGPL', 'MPL']
+found = []
+for pkg in data:
+    for lic in copyleft:
+        if lic.lower() in pkg.get('License', '').lower():
+            found.append(f\"{pkg['Name']}: {pkg['License']}\")
+if found:
+    print('\\nPackages with copyleft licenses:')
+    for f in found:
+        print(f'  - {f}')
+"
+        fi
+
+    - name: Upload license report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: license-report
+        path: licenses.md
