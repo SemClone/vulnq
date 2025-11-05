@@ -40,20 +40,20 @@ jobs:
         if pip-licenses --format=json | grep -iE "$COPYLEFT_LICENSES"; then
           echo "Warning: Copyleft licenses detected. Please review for compatibility."
           pip-licenses --format=json | python -c "
-import json
-import sys
-data = json.load(sys.stdin)
-copyleft = ['GPL', 'AGPL', 'LGPL', 'MPL']
-found = []
-for pkg in data:
-    for lic in copyleft:
-        if lic.lower() in pkg.get('License', '').lower():
-            found.append(f\"{pkg['Name']}: {pkg['License']}\")
-if found:
-    print('\\nPackages with copyleft licenses:')
-    for f in found:
-        print(f'  - {f}')
-"
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          copyleft = ['GPL', 'AGPL', 'LGPL', 'MPL']
+          found = []
+          for pkg in data:
+              for lic in copyleft:
+                  if lic.lower() in pkg.get('License', '').lower():
+                      found.append(f\"{pkg['Name']}: {pkg['License']}\")
+          if found:
+              print('\\nPackages with copyleft licenses:')
+              for f in found:
+                  print(f'  - {f}')
+          "
         fi
 
     - name: Upload license report
