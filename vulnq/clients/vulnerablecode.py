@@ -33,7 +33,7 @@ class VulnerableCodeClient(BaseClient):
             List of normalized Vulnerability objects
         """
         # URL encode the PURL
-        encoded_purl = urllib.parse.quote(purl, safe='')
+        encoded_purl = urllib.parse.quote(purl, safe="")
         url = f"{self.base_url}/packages/?purl={encoded_purl}"
 
         try:
@@ -103,7 +103,9 @@ class VulnerableCodeClient(BaseClient):
 
         return vulnerabilities
 
-    def _parse_vulnerability(self, data: Dict[str, Any], is_fixed: bool = False) -> Optional[Vulnerability]:
+    def _parse_vulnerability(
+        self, data: Dict[str, Any], is_fixed: bool = False
+    ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
@@ -188,5 +190,5 @@ class VulnerableCodeClient(BaseClient):
             modified_date=None,
             references=references,
             cwe_ids=[],  # Would need to parse from references or description
-            aliases=aliases
+            aliases=aliases,
         )

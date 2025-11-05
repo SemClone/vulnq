@@ -36,14 +36,14 @@ def print_table(result: QueryResult, show_fixes: bool = False):
             Severity.HIGH: "red",
             Severity.MEDIUM: "yellow",
             Severity.LOW: "blue",
-            Severity.NONE: "dim"
+            Severity.NONE: "dim",
         }.get(vuln.severity, "white")
 
         row = [
             vuln.id,
             Text(vuln.severity.value, style=severity_style),
             str(vuln.cvss_score) if vuln.cvss_score else "-",
-            vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary
+            vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary,
         ]
 
         if show_fixes:
@@ -69,7 +69,7 @@ def print_table(result: QueryResult, show_fixes: bool = False):
 
 def print_json(result: QueryResult):
     """Print results in JSON format."""
-    output = result.model_dump(mode='json')
+    output = result.model_dump(mode="json")
     console.print_json(data=output)
 
 
@@ -105,19 +105,29 @@ def print_markdown(result: QueryResult):
 
 
 @click.command()
-@click.argument('identifier', required=False)
-@click.option('--cpe', help='Query using CPE string')
-@click.option('--sha256', help='Query using SHA256 hash')
-@click.option('--sha1', help='Query using SHA1 hash')
-@click.option('--md5', help='Query using MD5 hash')
-@click.option('--input', '-i', type=click.Path(exists=True), help='Input file with identifiers')
-@click.option('--format', '-f', type=click.Choice(['table', 'json', 'markdown']), default='table', help='Output format')
-@click.option('--min-severity', type=click.Choice(['none', 'low', 'medium', 'high', 'critical']), help='Minimum severity to report')
-@click.option('--show-fixes', is_flag=True, help='Show fixed versions in output')
-@click.option('--sources', multiple=True, help='Vulnerability sources to check (osv, github, nvd)')
-@click.option('--use-vulnerablecode', is_flag=True, help='Use VulnerableCode as the primary source')
-@click.option('--no-cache', is_flag=True, help='Disable caching')
-@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+@click.argument("identifier", required=False)
+@click.option("--cpe", help="Query using CPE string")
+@click.option("--sha256", help="Query using SHA256 hash")
+@click.option("--sha1", help="Query using SHA1 hash")
+@click.option("--md5", help="Query using MD5 hash")
+@click.option("--input", "-i", type=click.Path(exists=True), help="Input file with identifiers")
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["table", "json", "markdown"]),
+    default="table",
+    help="Output format",
+)
+@click.option(
+    "--min-severity",
+    type=click.Choice(["none", "low", "medium", "high", "critical"]),
+    help="Minimum severity to report",
+)
+@click.option("--show-fixes", is_flag=True, help="Show fixed versions in output")
+@click.option("--sources", multiple=True, help="Vulnerability sources to check (osv, github, nvd)")
+@click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
+@click.option("--no-cache", is_flag=True, help="Disable caching")
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.version_option(version=__version__)
 def main(
     identifier: Optional[str],
@@ -132,7 +142,7 @@ def main(
     sources: tuple,
     use_vulnerablecode: bool,
     no_cache: bool,
-    verbose: bool
+    verbose: bool,
 ):
     """vulnq - Vulnerability Query Tool
 
@@ -163,7 +173,7 @@ def main(
     elif md5:
         queries.append(f"md5:{md5}")
     elif input:
-        if input == '-':
+        if input == "-":
             queries.extend(line.strip() for line in sys.stdin if line.strip())
         else:
             with open(input) as f:
@@ -177,6 +187,7 @@ def main(
     config = Configuration(cache_enabled=not no_cache, use_vulnerablecode=use_vulnerablecode)
     if sources:
         from .models import VulnerabilitySource
+
         config.sources = [VulnerabilitySource(s) for s in sources]
 
     # Initialize query engine
@@ -196,9 +207,9 @@ def main(
                 result.vulnerabilities = result.filter_by_severity(min_sev)
 
             # Output results
-            if format == 'json':
+            if format == "json":
                 print_json(result)
-            elif format == 'markdown':
+            elif format == "markdown":
                 print_markdown(result)
             else:
                 print_table(result, show_fixes=show_fixes)
@@ -207,9 +218,10 @@ def main(
             console.print(f"[red]Error processing {query_str}: {e}[/red]")
             if verbose:
                 import traceback
+
                 console.print(traceback.format_exc())
             sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

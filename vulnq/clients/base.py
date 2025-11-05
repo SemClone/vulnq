@@ -14,6 +14,7 @@ from ..models import Vulnerability, VulnerabilitySource, Severity
 
 class RateLimitError(Exception):
     """Raised when API rate limit is exceeded."""
+
     pass
 
 
@@ -25,7 +26,7 @@ class BaseClient(ABC):
         api_key: Optional[str] = None,
         timeout: int = 30,
         max_retries: int = 3,
-        verbose: bool = False
+        verbose: bool = False,
     ):
         """Initialize the client.
 
@@ -75,12 +76,7 @@ class BaseClient(ABC):
             await self.session.close()
             self.session = None
 
-    async def _make_request(
-        self,
-        method: str,
-        url: str,
-        **kwargs
-    ) -> Dict[str, Any]:
+    async def _make_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
         """Make an HTTP request with retries.
 
         Args:
@@ -109,8 +105,10 @@ class BaseClient(ABC):
                     async with self.session.request(method, url, **kwargs) as response:
                         # Check for rate limiting
                         if response.status == 429:
-                            retry_after = response.headers.get('Retry-After', '60')
-                            raise RateLimitError(f"Rate limit exceeded. Retry after {retry_after} seconds")
+                            retry_after = response.headers.get("Retry-After", "60")
+                            raise RateLimitError(
+                                f"Rate limit exceeded. Retry after {retry_after} seconds"
+                            )
 
                         response.raise_for_status()
 
@@ -122,7 +120,7 @@ class BaseClient(ABC):
                 except aiohttp.ClientError as e:
                     last_error = e
                     if attempt < self.max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                        await asyncio.sleep(2**attempt)  # Exponential backoff
                     continue
 
             if last_error:
@@ -168,14 +166,14 @@ class BaseClient(ABC):
 
         # Common mappings
         mappings = {
-            'CRITICAL': Severity.CRITICAL,
-            'HIGH': Severity.HIGH,
-            'MODERATE': Severity.MEDIUM,
-            'MEDIUM': Severity.MEDIUM,
-            'LOW': Severity.LOW,
-            'NONE': Severity.NONE,
-            'INFO': Severity.NONE,
-            'INFORMATIONAL': Severity.NONE,
+            "CRITICAL": Severity.CRITICAL,
+            "HIGH": Severity.HIGH,
+            "MODERATE": Severity.MEDIUM,
+            "MEDIUM": Severity.MEDIUM,
+            "LOW": Severity.LOW,
+            "NONE": Severity.NONE,
+            "INFO": Severity.NONE,
+            "INFORMATIONAL": Severity.NONE,
         }
 
         return mappings.get(severity, Severity.UNKNOWN)
@@ -211,10 +209,10 @@ class BaseClient(ABC):
         """
         # Create a consistent hash from key fields
         key_parts = [
-            str(vuln_data.get('id', '')),
-            str(vuln_data.get('cve', '')),
-            str(vuln_data.get('summary', '')),
-            str(self.source.value)
+            str(vuln_data.get("id", "")),
+            str(vuln_data.get("cve", "")),
+            str(vuln_data.get("summary", "")),
+            str(self.source.value),
         ]
-        key_string = '|'.join(key_parts)
+        key_string = "|".join(key_parts)
         return hashlib.sha256(key_string.encode()).hexdigest()[:16]

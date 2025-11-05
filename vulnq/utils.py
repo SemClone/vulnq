@@ -95,10 +95,7 @@ def parse_purl(purl_string: str) -> Optional[PackageInfo]:
     try:
         purl = PackageURL.from_string(purl_string)
         return PackageInfo(
-            ecosystem=purl.type,
-            name=purl.name,
-            version=purl.version,
-            purl=str(purl)
+            ecosystem=purl.type, name=purl.name, version=purl.version, purl=str(purl)
         )
     except Exception:
         return None
@@ -121,16 +118,16 @@ def parse_cpe(cpe_string: str) -> Optional[PackageInfo]:
         # CPE 2.3 format
         if cpe_string.startswith("2.3:") or cpe_string.startswith("2.2:"):
             parts = cpe_string.split(":")
-            if len(parts) >= 6:
-                vendor = parts[3]
-                product = parts[4]
-                version = parts[5] if len(parts) > 5 and parts[5] != "*" else None
+            if len(parts) >= 5:
+                vendor = parts[2]
+                product = parts[3]
+                version = parts[4] if len(parts) > 4 and parts[4] != "*" else None
 
                 return PackageInfo(
                     ecosystem=None,
                     name=f"{vendor}/{product}" if vendor != "*" else product,
                     version=version,
-                    cpe=f"cpe:{cpe_string}"
+                    cpe=f"cpe:{cpe_string}",
                 )
 
         # CPE 2.2 format (legacy)
@@ -145,7 +142,7 @@ def parse_cpe(cpe_string: str) -> Optional[PackageInfo]:
                     ecosystem=None,
                     name=f"{vendor}/{product}",
                     version=version,
-                    cpe=f"cpe:{cpe_string}"
+                    cpe=f"cpe:{cpe_string}",
                 )
 
     except Exception:
@@ -178,14 +175,7 @@ def severity_to_score(severity: str) -> float:
         Numeric score (0-10)
     """
     severity = severity.upper()
-    mapping = {
-        "CRITICAL": 9.0,
-        "HIGH": 7.0,
-        "MEDIUM": 4.0,
-        "LOW": 2.0,
-        "NONE": 0.0,
-        "UNKNOWN": 5.0
-    }
+    mapping = {"CRITICAL": 9.0, "HIGH": 7.0, "MEDIUM": 4.0, "LOW": 2.0, "NONE": 0.0, "UNKNOWN": 5.0}
     return mapping.get(severity, 5.0)
 
 

@@ -61,17 +61,11 @@ class NVDClient(BaseClient):
         if not cpe.startswith("cpe:"):
             cpe = f"cpe:{cpe}"
 
-        params = {
-            "cpeName": cpe,
-            "resultsPerPage": 100
-        }
+        params = {"cpeName": cpe, "resultsPerPage": 100}
 
         try:
             response = await self._make_request(
-                "GET",
-                self.base_url,
-                params=params,
-                headers=self._get_headers()
+                "GET", self.base_url, params=params, headers=self._get_headers()
             )
             return self._parse_response(response)
         except Exception as e:
@@ -261,5 +255,5 @@ class NVDClient(BaseClient):
             modified_date=modified_date,
             references=references,
             cwe_ids=cwe_ids,
-            aliases=[]
+            aliases=[],
         )

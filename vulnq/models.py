@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class Severity(str, Enum):
     """Vulnerability severity levels."""
+
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
@@ -18,6 +19,7 @@ class Severity(str, Enum):
 
 class IdentifierType(str, Enum):
     """Types of software identifiers."""
+
     PURL = "purl"
     CPE = "cpe"
     SHA256 = "sha256"
@@ -28,6 +30,7 @@ class IdentifierType(str, Enum):
 
 class VulnerabilitySource(str, Enum):
     """Vulnerability data sources."""
+
     OSV = "osv"
     GITHUB = "github"
     NVD = "nvd"
@@ -38,6 +41,7 @@ class VulnerabilitySource(str, Enum):
 
 class Vulnerability(BaseModel):
     """Vulnerability data model."""
+
     id: str = Field(..., description="Vulnerability identifier (CVE, GHSA, etc.)")
     source: VulnerabilitySource = Field(..., description="Data source")
     severity: Severity = Field(Severity.UNKNOWN, description="Severity level")
@@ -54,13 +58,12 @@ class Vulnerability(BaseModel):
     aliases: List[str] = Field(default_factory=list, description="Alternative identifiers")
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
+        json_encoders = {datetime: lambda v: v.isoformat() if v else None}
 
 
 class PackageInfo(BaseModel):
     """Package information model."""
+
     ecosystem: Optional[str] = Field(None, description="Package ecosystem")
     name: str = Field(..., description="Package name")
     version: Optional[str] = Field(None, description="Package version")
@@ -70,13 +73,18 @@ class PackageInfo(BaseModel):
 
 class QueryResult(BaseModel):
     """Query result model."""
+
     query: str = Field(..., description="Original query string")
     query_type: IdentifierType = Field(..., description="Type of identifier used")
     package_info: Optional[PackageInfo] = Field(None, description="Package information")
-    vulnerabilities: List[Vulnerability] = Field(default_factory=list, description="Found vulnerabilities")
+    vulnerabilities: List[Vulnerability] = Field(
+        default_factory=list, description="Found vulnerabilities"
+    )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Query metadata")
     query_time: datetime = Field(default_factory=datetime.utcnow, description="Query timestamp")
-    sources_checked: List[VulnerabilitySource] = Field(default_factory=list, description="Sources that were checked")
+    sources_checked: List[VulnerabilitySource] = Field(
+        default_factory=list, description="Sources that were checked"
+    )
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
 
     @property
@@ -101,17 +109,15 @@ class QueryResult(BaseModel):
             Severity.LOW: 1,
             Severity.MEDIUM: 2,
             Severity.HIGH: 3,
-            Severity.CRITICAL: 4
+            Severity.CRITICAL: 4,
         }
         min_level = severity_order.get(min_severity, 0)
-        return [
-            v for v in self.vulnerabilities
-            if severity_order.get(v.severity, 0) >= min_level
-        ]
+        return [v for v in self.vulnerabilities if severity_order.get(v.severity, 0) >= min_level]
 
 
 class Configuration(BaseModel):
     """Configuration model for vulnq."""
+
     github_token: Optional[str] = Field(None, description="GitHub API token")
     nvd_api_key: Optional[str] = Field(None, description="NVD API key")
     cache_enabled: bool = Field(True, description="Enable caching")
@@ -121,6 +127,10 @@ class Configuration(BaseModel):
     timeout: int = Field(30, description="Request timeout in seconds")
     use_vulnerablecode: bool = Field(False, description="Use VulnerableCode as primary source")
     sources: List[VulnerabilitySource] = Field(
-        default_factory=lambda: [VulnerabilitySource.OSV, VulnerabilitySource.GITHUB, VulnerabilitySource.NVD],
-        description="Enabled vulnerability sources"
+        default_factory=lambda: [
+            VulnerabilitySource.OSV,
+            VulnerabilitySource.GITHUB,
+            VulnerabilitySource.NVD,
+        ],
+        description="Enabled vulnerability sources",
     )

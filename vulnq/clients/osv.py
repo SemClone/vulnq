@@ -178,7 +178,9 @@ class OSVClient(BaseClient):
         # Get summary and details
         summary = data.get("summary", "")
         if not summary:
-            summary = data.get("details", "")[:200] if data.get("details") else f"Vulnerability {vuln_id}"
+            summary = (
+                data.get("details", "")[:200] if data.get("details") else f"Vulnerability {vuln_id}"
+            )
 
         details = data.get("details", "")
 
@@ -203,5 +205,5 @@ class OSVClient(BaseClient):
             modified_date=modified_date,
             references=references,
             cwe_ids=[],  # OSV doesn't typically provide CWE IDs
-            aliases=aliases
+            aliases=aliases,
         )

@@ -13,16 +13,10 @@ from .models import (
     Configuration,
     IdentifierType,
     VulnerabilitySource,
-    Severity
+    Severity,
 )
 from .utils import detect_identifier_type, parse_identifier
-from .clients import (
-    OSVClient,
-    GitHubClient,
-    NVDClient,
-    VulnerableCodeClient,
-    RateLimitError
-)
+from .clients import OSVClient, GitHubClient, NVDClient, VulnerableCodeClient, RateLimitError
 
 
 class VulnerabilityQuery:
@@ -60,8 +54,7 @@ class VulnerabilityQuery:
         # Initialize VulnerableCode if enabled
         if self.config.use_vulnerablecode:
             clients[VulnerabilitySource.VULNERABLECODE] = VulnerableCodeClient(
-                timeout=self.config.timeout,
-                verbose=self.verbose
+                timeout=self.config.timeout, verbose=self.verbose
             )
             # If using VulnerableCode, it's the only source
             return clients
@@ -69,22 +62,17 @@ class VulnerabilityQuery:
         # Otherwise, initialize individual sources
         if VulnerabilitySource.OSV in self.config.sources:
             clients[VulnerabilitySource.OSV] = OSVClient(
-                timeout=self.config.timeout,
-                verbose=self.verbose
+                timeout=self.config.timeout, verbose=self.verbose
             )
 
         if VulnerabilitySource.GITHUB in self.config.sources:
             clients[VulnerabilitySource.GITHUB] = GitHubClient(
-                api_key=self.config.github_token,
-                timeout=self.config.timeout,
-                verbose=self.verbose
+                api_key=self.config.github_token, timeout=self.config.timeout, verbose=self.verbose
             )
 
         if VulnerabilitySource.NVD in self.config.sources:
             clients[VulnerabilitySource.NVD] = NVDClient(
-                api_key=self.config.nvd_api_key,
-                timeout=self.config.timeout,
-                verbose=self.verbose
+                api_key=self.config.nvd_api_key, timeout=self.config.timeout, verbose=self.verbose
             )
 
         return clients
@@ -126,7 +114,7 @@ class VulnerabilityQuery:
             query=identifier,
             query_type=id_type,
             package_info=package_info,
-            query_time=datetime.utcnow()
+            query_time=datetime.utcnow(),
         )
 
         # If using VulnerableCode, query it and return
@@ -146,7 +134,7 @@ class VulnerabilityQuery:
         identifier: str,
         id_type: IdentifierType,
         package_info: Optional[PackageInfo],
-        result: QueryResult
+        result: QueryResult,
     ) -> QueryResult:
         """Query VulnerableCode only.
 
@@ -192,7 +180,7 @@ class VulnerabilityQuery:
         identifier: str,
         id_type: IdentifierType,
         package_info: Optional[PackageInfo],
-        result: QueryResult
+        result: QueryResult,
     ) -> List[Vulnerability]:
         """Query all enabled sources in parallel.
 
@@ -256,7 +244,9 @@ class VulnerabilityQuery:
 
         return all_vulnerabilities
 
-    def _deduplicate_vulnerabilities(self, vulnerabilities: List[Vulnerability]) -> List[Vulnerability]:
+    def _deduplicate_vulnerabilities(
+        self, vulnerabilities: List[Vulnerability]
+    ) -> List[Vulnerability]:
         """Deduplicate and consolidate vulnerability list.
 
         This method:
@@ -305,15 +295,10 @@ class VulnerabilityQuery:
             Severity.MEDIUM: 3,
             Severity.LOW: 2,
             Severity.NONE: 1,
-            Severity.UNKNOWN: 0
+            Severity.UNKNOWN: 0,
         }
 
-        consolidated.sort(
-            key=lambda v: (
-                -severity_order.get(v.severity, 0),
-                v.id
-            )
-        )
+        consolidated.sort(key=lambda v: (-severity_order.get(v.severity, 0), v.id))
 
         return consolidated
 
@@ -340,10 +325,7 @@ class VulnerabilityQuery:
             VulnerabilitySource.VULNERABLECODE: 4,
         }
 
-        sorted_vulns = sorted(
-            vulnerabilities,
-            key=lambda v: source_priority.get(v.source, 99)
-        )
+        sorted_vulns = sorted(vulnerabilities, key=lambda v: source_priority.get(v.source, 99))
 
         # Start with the highest priority vulnerability
         merged = sorted_vulns[0].model_copy(deep=True)
@@ -389,8 +371,7 @@ class VulnerabilityQuery:
 
             # Use earliest published date
             if vuln.published_date and (
-                not merged.published_date or
-                vuln.published_date < merged.published_date
+                not merged.published_date or vuln.published_date < merged.published_date
             ):
                 merged.published_date = vuln.published_date
 

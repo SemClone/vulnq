@@ -23,10 +23,7 @@ class GitHubClient(BaseClient):
 
     def _get_headers(self) -> Dict[str, str]:
         """Get request headers including authentication if available."""
-        headers = {
-            "Accept": "application/vnd.github.v4+json",
-            "Content-Type": "application/json"
-        }
+        headers = {"Accept": "application/vnd.github.v4+json", "Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
@@ -99,17 +96,14 @@ class GitHubClient(BaseClient):
         }
         """
 
-        variables = {
-            "ecosystem": gh_ecosystem,
-            "package": name
-        }
+        variables = {"ecosystem": gh_ecosystem, "package": name}
 
         try:
             response = await self._make_request(
                 "POST",
                 self.base_url,
                 json={"query": query, "variables": variables},
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             return self._parse_response(response, version)
         except Exception as e:
@@ -146,7 +140,9 @@ class GitHubClient(BaseClient):
             return match.group(1), match.group(2), match.group(3)
         return None, None, None
 
-    def _parse_response(self, response: Dict[str, Any], target_version: Optional[str]) -> List[Vulnerability]:
+    def _parse_response(
+        self, response: Dict[str, Any], target_version: Optional[str]
+    ) -> List[Vulnerability]:
         """Parse GitHub GraphQL response into Vulnerability objects.
 
         Args:
@@ -173,7 +169,9 @@ class GitHubClient(BaseClient):
 
         return vulnerabilities
 
-    def _parse_vulnerability(self, data: Dict[str, Any], target_version: Optional[str]) -> Optional[Vulnerability]:
+    def _parse_vulnerability(
+        self, data: Dict[str, Any], target_version: Optional[str]
+    ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
@@ -225,7 +223,9 @@ class GitHubClient(BaseClient):
 
         if advisory.get("publishedAt"):
             try:
-                published_date = datetime.fromisoformat(advisory["publishedAt"].replace("Z", "+00:00"))
+                published_date = datetime.fromisoformat(
+                    advisory["publishedAt"].replace("Z", "+00:00")
+                )
             except:
                 pass
 
@@ -273,7 +273,7 @@ class GitHubClient(BaseClient):
             modified_date=modified_date,
             references=references,
             cwe_ids=cwe_ids,
-            aliases=aliases
+            aliases=aliases,
         )
 
     def _is_version_affected(self, version: str, vulnerable_range: str) -> bool:
