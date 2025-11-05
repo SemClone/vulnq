@@ -2,6 +2,7 @@
 
 import re
 from typing import Optional, Tuple
+
 from packageurl import PackageURL
 
 from .models import IdentifierType, PackageInfo

@@ -2,18 +2,18 @@
 
 import json
 import sys
-from typing import List, Optional
 from pathlib import Path
+from typing import List, Optional
 
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from . import __version__
 from .core import VulnerabilityQuery
-from .models import Severity, QueryResult, Configuration
+from .models import Configuration, QueryResult, Severity
 from .utils import detect_identifier_type, parse_identifier
 
 console = Console()

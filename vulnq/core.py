@@ -1,22 +1,22 @@
 """Core functionality for vulnq."""
 
-import os
 import asyncio
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+import os
 from collections import defaultdict
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from .clients import GitHubClient, NVDClient, OSVClient, RateLimitError, VulnerableCodeClient
 from .models import (
-    QueryResult,
-    Vulnerability,
-    PackageInfo,
     Configuration,
     IdentifierType,
-    VulnerabilitySource,
+    PackageInfo,
+    QueryResult,
     Severity,
+    Vulnerability,
+    VulnerabilitySource,
 )
 from .utils import detect_identifier_type, parse_identifier
-from .clients import OSVClient, GitHubClient, NVDClient, VulnerableCodeClient, RateLimitError
 
 
 class VulnerabilityQuery:

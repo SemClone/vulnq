@@ -1,10 +1,10 @@
 """NIST NVD API client."""
 
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..models import Vulnerability, VulnerabilitySource, Severity
+from ..models import Severity, Vulnerability, VulnerabilitySource
 from .base import BaseClient
 
 

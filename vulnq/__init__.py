@@ -8,6 +8,6 @@ __author__ = "Oscar Valenzuela B."
 __email__ = "oscar.valenzuela.b@gmail.com"
 
 from .core import VulnerabilityQuery
-from .models import Vulnerability, QueryResult
+from .models import QueryResult, Vulnerability
 
 __all__ = ["VulnerabilityQuery", "Vulnerability", "QueryResult", "__version__"]
