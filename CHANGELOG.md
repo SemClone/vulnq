@@ -5,6 +5,20 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-01-05
+
+### Fixed
+- Replace broken pip-licenses with osslili-based license checking workflow
+- Update deprecated GitHub Actions (upload-artifact v3 → v4, CodeQL v2 → v3)
+- Fix PyPI publishing to use GitHub OIDC trusted publishing instead of API tokens
+- Add explicit permissions to all workflow jobs for security best practices
+- Remove unnecessary files (Makefile, .pre-commit-config.yaml) for consistency
+- Remove Related Projects section from README
+
+### Changed
+- Standardize Python version to 3.13 across all workflows
+- Align workflow structure with other SEMCL.ONE projects
+
 ## [1.0.0] - 2025-01-05
 
 ### Added
@@ -48,5 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secure API key handling via environment variables
 - Rate limiting for API calls
 
+[1.0.1]: https://github.com/scanoss/vulnq/releases/tag/v1.0.1
 [1.0.0]: https://github.com/scanoss/vulnq/releases/tag/v1.0.0
 [0.1.0]: https://github.com/scanoss/vulnq/releases/tag/v0.1.0
