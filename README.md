@@ -23,7 +23,7 @@ pip install vulnq
 For development:
 
 ```bash
-git clone https://github.com/scanoss/vulnq.git
+git clone https://github.com/SemClone/vulnq.git
 cd vulnq
 pip install -e .
 ```
@@ -206,10 +206,10 @@ vulnq is released under the Apache License 2.0. See [LICENSE](LICENSE) for detai
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/scanoss/vulnq/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/scanoss/vulnq/discussions)
+- **Issues**: [GitHub Issues](https://github.com/SemClone/vulnq/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SemClone/vulnq/discussions)
 - **Security**: Report vulnerabilities to security@scanoss.com
 
 ---
 
-*Part of the [SEMCL.ONE](https://github.com/scanoss/semcl.one) Software Composition Analysis toolchain*
+*Part of the [SEMCL.ONE](https://github.com/SemClone/semcl.one) Software Composition Analysis toolchain*
