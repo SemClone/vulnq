@@ -199,13 +199,13 @@ class NVDClient(BaseClient):
         if "published" in data:
             try:
                 published_date = datetime.fromisoformat(data["published"].replace("Z", "+00:00"))
-            except:
+            except Exception:
                 pass
 
         if "lastModified" in data:
             try:
                 modified_date = datetime.fromisoformat(data["lastModified"].replace("Z", "+00:00"))
-            except:
+            except Exception:
                 pass
 
         # Parse affected versions from configurations

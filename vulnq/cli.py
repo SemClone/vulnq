@@ -1,20 +1,16 @@
 """Command-line interface for vulnq."""
 
-import json
 import sys
-from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import click
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from . import __version__
 from .core import VulnerabilityQuery
 from .models import Configuration, QueryResult, Severity
-from .utils import detect_identifier_type, parse_identifier
 
 console = Console()
 
@@ -79,7 +75,7 @@ def print_markdown(result: QueryResult):
     md += f"**Query Time:** {result.query_time.isoformat()}\n"
     md += f"**Sources Checked:** {', '.join(s.value for s in result.sources_checked)}\n\n"
 
-    md += f"## Summary\n\n"
+    md += "## Summary\n\n"
     md += f"- **Total Vulnerabilities:** {result.vulnerability_count}\n"
     md += f"- **Critical:** {result.critical_count}\n"
     md += f"- **High:** {result.high_count}\n\n"

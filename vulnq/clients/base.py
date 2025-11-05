@@ -3,11 +3,9 @@
 import asyncio
 import hashlib
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from pydantic import BaseModel
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
 

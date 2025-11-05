@@ -226,13 +226,13 @@ class GitHubClient(BaseClient):
                 published_date = datetime.fromisoformat(
                     advisory["publishedAt"].replace("Z", "+00:00")
                 )
-            except:
+            except Exception:
                 pass
 
         if advisory.get("updatedAt"):
             try:
                 modified_date = datetime.fromisoformat(advisory["updatedAt"].replace("Z", "+00:00"))
-            except:
+            except Exception:
                 pass
 
         # Parse affected and fixed versions

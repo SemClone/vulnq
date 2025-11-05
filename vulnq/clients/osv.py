@@ -94,7 +94,6 @@ class OSVClient(BaseClient):
 
         # Get aliases (CVE, GHSA, etc.)
         aliases = data.get("aliases", [])
-        cve_id = next((a for a in aliases if a.startswith("CVE-")), None)
 
         # Parse severity
         severity = Severity.UNKNOWN
@@ -147,13 +146,13 @@ class OSVClient(BaseClient):
         if "published" in data:
             try:
                 published_date = datetime.fromisoformat(data["published"].replace("Z", "+00:00"))
-            except:
+            except Exception:
                 pass
 
         if "modified" in data:
             try:
                 modified_date = datetime.fromisoformat(data["modified"].replace("Z", "+00:00"))
-            except:
+            except Exception:
                 pass
 
         # Parse affected versions and fixes

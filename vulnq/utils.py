@@ -1,7 +1,7 @@
 """Utility functions for vulnq."""
 
 import re
-from typing import Optional, Tuple
+from typing import Optional
 
 from packageurl import PackageURL
 
@@ -58,7 +58,7 @@ def detect_identifier_type(identifier: str) -> IdentifierType:
     try:
         PackageURL.from_string(identifier)
         return IdentifierType.PURL
-    except:
+    except Exception:
         pass
 
     # Default to PURL if unclear

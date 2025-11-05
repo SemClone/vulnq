@@ -1,7 +1,6 @@
 """VulnerableCode API client."""
 
 import urllib.parse
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
@@ -136,7 +135,7 @@ class VulnerableCodeClient(BaseClient):
                     cvss_score = float(score_data.get("value", 0))
                     severity = self.cvss_to_severity(cvss_score)
                     break
-                except:
+                except Exception:
                     pass
 
         # If no CVSS v3, try other scoring systems
@@ -148,7 +147,7 @@ class VulnerableCodeClient(BaseClient):
                         cvss_score = score_value
                         severity = self.cvss_to_severity(cvss_score)
                         break
-                except:
+                except Exception:
                     pass
 
         # Get summary
