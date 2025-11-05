@@ -3,7 +3,7 @@
 A lightweight, multi-source vulnerability query tool for software composition analysis.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Oscar Valenzuela B."
 __email__ = "oscar.valenzuela.b@gmail.com"
 
