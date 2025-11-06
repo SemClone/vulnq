@@ -204,6 +204,12 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 
 vulnq is released under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/SemClone/vulnq/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SemClone/vulnq/discussions)
+- **Security**: Report vulnerabilities to security@semcl.one
+
 ---
 
-*Part of the [SEMCL.ONE](https://github.com/scanoss/semcl.one) Software Composition Analysis toolchain*
+*Part of the [SEMCL.ONE](https://github.com/SemClone/semcl.one) Software Composition Analysis toolchain*
