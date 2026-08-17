@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ..models import Severity, Vulnerability, VulnerabilitySource
+from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
 
@@ -42,6 +42,8 @@ class NVDClient(BaseClient):
         Returns:
             List of normalized Vulnerability objects
         """
+        self._begin_query()
+
         # Try to convert PURL to CPE
         cpe = self._purl_to_cpe(purl)
         if not cpe:
@@ -60,6 +62,8 @@ class NVDClient(BaseClient):
         Returns:
             List of normalized Vulnerability objects
         """
+        self._begin_query()
+
         # Clean CPE string
         if not cpe.startswith("cpe:"):
             cpe = f"cpe:{cpe}"
@@ -72,7 +76,44 @@ class NVDClient(BaseClient):
         response = await self._make_request(
             "GET", self.base_url, params=params, headers=self._get_headers()
         )
-        return self._parse_response(response)
+        # NVD caps a page at 100 and rate-limits hard enough that paging a
+        # 6000-result CPE is not viable inside one query. Reporting the
+        # shortfall is: 100 of 6332 presented as a whole answer is the same
+        # false-complete result this client exists to avoid.
+        total = response.get("totalResults")
+        returned = len(response.get("vulnerabilities") or [])
+        if isinstance(total, int) and total > returned:
+            self.parse_warnings.append(
+                f"returned only {returned} of {total} records for {cpe}; the rest were "
+                "not fetched. Narrow the CPE to see them"
+            )
+
+        return self._parse_response(response, self._cpe_version(cpe))
+
+    @staticmethod
+    def _cpe_version(cpe: str) -> Optional[str]:
+        """Return the version a CPE pins, if it pins one.
+
+        NVD matches cpeName server-side, so a versioned CPE is version-filtered
+        by NVD itself. A wildcard version is not, and reporting those findings
+        as version-matched would claim a check nobody ran.
+
+        Args:
+            cpe: CPE string, 2.3 or legacy
+
+        Returns:
+            The pinned version, or None for a wildcard or malformed CPE
+        """
+        parts = cpe.split(":")
+        # cpe:2.3:<part>:<vendor>:<product>:<version>
+        if len(parts) > 5 and parts[1] == "2.3":
+            version = parts[5]
+        elif len(parts) > 4 and parts[1].startswith("/"):
+            # Legacy cpe:/a:vendor:product:version
+            version = parts[4]
+        else:
+            return None
+        return version if version and version not in ("*", "-") else None
 
     def _purl_to_cpe(self, purl: str) -> Optional[str]:
         """Convert PURL to CPE if possible.
@@ -113,35 +154,64 @@ class NVDClient(BaseClient):
 
         return None
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[Vulnerability]:
+    def _parse_response(
+        self, response: Dict[str, Any], queried_version: Optional[str] = None
+    ) -> List[Vulnerability]:
         """Parse NVD API response into Vulnerability objects.
 
         Args:
             response: Raw API response
+            queried_version: Version pinned by the queried CPE, if any
 
         Returns:
             List of Vulnerability objects
+
+        Raises:
+            RuntimeError: If NVD returned records and none could be parsed
         """
         vulnerabilities = []
+        items = response.get("vulnerabilities", [])
+        parse_failures = 0
+        last_error = ""
 
-        for item in response.get("vulnerabilities", []):
+        for item in items:
             try:
                 cve_data = item.get("cve", {})
-                vuln = self._parse_vulnerability(cve_data)
+                vuln = self._parse_vulnerability(cve_data, queried_version)
                 if vuln:
                     vulnerabilities.append(vuln)
+                else:
+                    # _parse_vulnerability returns None only for a CVE with no
+                    # id, which is malformed rather than inapplicable. NVD
+                    # filters by version server-side, so nothing that reaches
+                    # here is legitimately skippable.
+                    parse_failures += 1
             except Exception as e:
+                parse_failures += 1
+                last_error = str(e)
                 if self.verbose:
                     print(f"Error parsing NVD vulnerability: {e}")
                 continue
 
+        # Every record failing to parse means the response shape changed, not
+        # that the package is clean.
+        if items and parse_failures == len(items):
+            raise RuntimeError(f"NVD returned {len(items)} records but none could be parsed")
+
+        # Below that threshold the query still has an answer, just not a whole
+        # one. Say so rather than handing back a short list that looks complete.
+        self._note_dropped_records(parse_failures, len(items), last_error)
+
         return vulnerabilities
 
-    def _parse_vulnerability(self, data: Dict[str, Any]) -> Optional[Vulnerability]:
+    def _parse_vulnerability(
+        self, data: Dict[str, Any], queried_version: Optional[str] = None
+    ) -> Optional[Vulnerability]:
         """Parse a single CVE entry.
 
         Args:
             data: Raw CVE data
+            queried_version: Version pinned by the queried CPE, if any
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -259,4 +329,7 @@ class NVDClient(BaseClient):
             references=references,
             cwe_ids=cwe_ids,
             aliases=[],
+            version_match=(
+                VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED
+            ),
         )

@@ -29,6 +29,21 @@ class IdentifierType(str, Enum):
     SWID = "swid"
 
 
+class VersionMatch(str, Enum):
+    """How a reported advisory relates to the version that was queried.
+
+    Recorded per finding because a consumer ranking a backlog needs to know
+    whether "this affects you" was checked or assumed. UNCONFIRMED exists so an
+    unevaluable range can be reported rather than dropped: over-reporting is
+    the safe direction, but only when it is visible as such.
+    """
+
+    NOT_EVALUATED = "not_evaluated"
+    SOURCE_FILTERED = "source_filtered"
+    AFFECTED = "affected"
+    UNCONFIRMED = "unconfirmed"
+
+
 class VulnerabilitySource(str, Enum):
     """Vulnerability data sources.
 
@@ -60,6 +75,14 @@ class Vulnerability(BaseModel):
     references: List[str] = Field(default_factory=list, description="Reference URLs")
     cwe_ids: List[str] = Field(default_factory=list, description="CWE identifiers")
     aliases: List[str] = Field(default_factory=list, description="Alternative identifiers")
+
+    # Whether the queried version was actually checked against this advisory's
+    # affected range, and by whom. A finding reported without that check is
+    # still worth reporting, but a consumer must be able to tell the two apart.
+    version_match: VersionMatch = Field(
+        VersionMatch.NOT_EVALUATED,
+        description="How this advisory was matched against the queried version",
+    )
 
     # Exploitability facts joined from published snapshots. None always means
     # "unknown" - no snapshot, or no row for this CVE - and never "verified
@@ -136,6 +159,10 @@ class QueryResult(BaseModel):
     sources_skipped: Dict[str, str] = Field(
         default_factory=dict,
         description="Sources that could not be asked, mapped to why",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Sources that answered, but whose answer was incomplete",
     )
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
 

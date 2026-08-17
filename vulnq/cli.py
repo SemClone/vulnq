@@ -10,7 +10,7 @@ from rich.text import Text
 
 from . import __version__
 from .core import NoSourcesConfiguredError, VulnerabilityQuery
-from .models import QueryResult, Severity
+from .models import QueryResult, Severity, VersionMatch
 
 console = Console()
 
@@ -62,7 +62,13 @@ def print_table(result: QueryResult, show_fixes: bool = False):
         if show_epss:
             row.append(f"{vuln.epss_score:.3f}" if vuln.epss_score is not None else "?")
 
-        row.append(vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary)
+        summary_text = vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary
+        if vuln.version_match == VersionMatch.UNCONFIRMED:
+            # Included because the range could not be evaluated, not because it
+            # was evaluated and matched. Saying so is the whole point of
+            # reporting it rather than dropping it.
+            summary_text = f"[unconfirmed] {summary_text}"
+        row.append(summary_text)
 
         if show_fixes:
             fixes = ", ".join(vuln.fixed_versions[:3])
@@ -105,8 +111,13 @@ def print_table(result: QueryResult, show_fixes: bool = False):
             f"[dim]{provenance.source}: {provenance.version or 'unknown'}{age}[/dim]{state}"
         )
 
+    if result.warnings:
+        console.print("\n[yellow]Incomplete answers:[/yellow]")
+        for warning in result.warnings:
+            console.print(f"  • {warning}")
+
     if result.errors:
-        console.print("\n[yellow]Warnings:[/yellow]")
+        console.print("\n[red]Errors:[/red]")
         for error in result.errors:
             console.print(f"  • {error}")
 
@@ -150,6 +161,12 @@ def print_markdown(result: QueryResult):
             md += f"- **{source}:** {reason}\n"
         md += "\n"
 
+    if result.warnings:
+        md += "### Incomplete Answers\n\n"
+        for warning in result.warnings:
+            md += f"- {warning}\n"
+        md += "\n"
+
     if result.errors:
         md += "### Errors\n\n"
         for error in result.errors:
@@ -162,6 +179,12 @@ def print_markdown(result: QueryResult):
         for vuln in result.vulnerabilities:
             md += f"### {vuln.id} - {vuln.severity.value}\n\n"
             md += f"**CVSS Score:** {vuln.cvss_score or 'N/A'}\n\n"
+
+            if vuln.version_match == VersionMatch.UNCONFIRMED:
+                md += (
+                    "> Reported because its affected-version range could not be evaluated, "
+                    "not because the queried version was confirmed to be in it.\n\n"
+                )
 
             if vuln.known_exploited is not None:
                 exploited = "Yes" if vuln.known_exploited else "No"

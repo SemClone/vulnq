@@ -21,10 +21,22 @@ from .models import (
     PackageInfo,
     QueryResult,
     Severity,
+    VersionMatch,
     Vulnerability,
     VulnerabilitySource,
 )
 from .utils import detect_identifier_type, parse_identifier
+
+# How strong a claim each version-match state represents. Merging two records
+# for the same CVE keeps the strongest: if one source actually checked the
+# queried version against the affected range, that check is not lost because a
+# higher-priority source could not run it.
+_VERSION_MATCH_STRENGTH = {
+    VersionMatch.NOT_EVALUATED: 0,
+    VersionMatch.UNCONFIRMED: 1,
+    VersionMatch.SOURCE_FILTERED: 2,
+    VersionMatch.AFFECTED: 2,
+}
 
 # Sources that can be named in `Configuration.sources` and queried in parallel.
 # VulnerableCode is deliberately absent: it replaces the fan-out rather than
@@ -289,6 +301,10 @@ class VulnerabilityQuery:
 
             result.vulnerabilities = vulnerabilities
             result.sources_checked.append(VulnerabilitySource.VULNERABLECODE)
+            # A partial answer still counts as an answer, but must not pass for
+            # a whole one.
+            for warning in getattr(client, "parse_warnings", []):
+                result.warnings.append(f"{VulnerabilitySource.VULNERABLECODE.value}: {warning}")
 
         except UnsupportedQueryError as e:
             # Cannot be asked, as opposed to asked and broken.
@@ -376,6 +392,11 @@ class VulnerabilityQuery:
             else:
                 all_vulnerabilities.extend(task_result)
                 result.sources_checked.append(source)
+                # An answer can be complete enough to count as an answer and
+                # still be short a few records. Surface that here, or a partial
+                # list is indistinguishable from a whole one.
+                for warning in getattr(self._clients[source], "parse_warnings", []):
+                    result.warnings.append(f"{source.value}: {warning}")
 
         # Clean up all sessions
         for client in clients_to_close:
@@ -502,6 +523,14 @@ class VulnerabilityQuery:
 
             if not merged.summary and vuln.summary:
                 merged.summary = vuln.summary
+
+            # Keep the strongest version-match claim across the group. Without
+            # this, a CVE that NVD version-filtered would be reported as
+            # unconfirmed just because GitHub could not parse its range.
+            if _VERSION_MATCH_STRENGTH.get(vuln.version_match, 0) > _VERSION_MATCH_STRENGTH.get(
+                merged.version_match, 0
+            ):
+                merged.version_match = vuln.version_match
 
             # Use CVSS score if not present
             if not merged.cvss_score and vuln.cvss_score:

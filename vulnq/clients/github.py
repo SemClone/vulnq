@@ -1,10 +1,12 @@
 """GitHub Advisory Database API client."""
 
-import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from ..models import Severity, Vulnerability, VulnerabilitySource
+from packageurl import PackageURL
+
+from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
+from ..versions import evaluate_range
 from .base import BaseClient, RateLimitError, UnsupportedQueryError
 
 # PURL type to GitHub SecurityAdvisoryEcosystem. Both spellings of the Go purl
@@ -25,6 +27,37 @@ ECOSYSTEM_MAP = {
     "swift": "SWIFT",
     "githubactions": "ACTIONS",
 }
+
+# How a PURL's namespace and name combine into the package name GitHub's
+# advisory database is keyed by. Passing the PURL name through unchanged asked
+# GitHub about packages that cannot exist - "org.apache.logging.log4j/log4j-core"
+# for every canonical Maven coordinate - and GitHub answered honestly with zero
+# advisories, which the caller then read as a clean scan.
+#
+# - "colon": Maven's group:artifact
+# - "slash": a path-shaped name, already correct once percent-decoding is done
+# - "name": namespace is not part of the key
+_NAME_STYLE = {
+    "maven": "colon",
+    "npm": "slash",
+    "go": "slash",
+    "golang": "slash",
+    "composer": "slash",
+    "swift": "slash",
+    "githubactions": "slash",
+    "pypi": "name",
+    "gem": "name",
+    "nuget": "name",
+    "cargo": "name",
+    "hex": "name",
+    "pub": "name",
+}
+
+# Pages of 100 advisories to fetch before giving up. GitHub holds more than a
+# thousand for some packages, and stopping at the first page reported 27 of
+# 1324 as if that were all of them. Reaching this cap is reported as an
+# incomplete answer rather than passed off as a whole one.
+MAX_PAGES = 25
 
 
 class GitHubClient(BaseClient):
@@ -56,6 +89,8 @@ class GitHubClient(BaseClient):
         Returns:
             List of normalized Vulnerability objects
         """
+        self._begin_query()
+
         # Parse PURL to extract ecosystem and name
         ecosystem, name, version = self._parse_purl(purl)
         if not ecosystem or not name:
@@ -70,10 +105,19 @@ class GitHubClient(BaseClient):
                 f"GitHub Advisory Database has no ecosystem mapping for '{ecosystem}'"
             )
 
-        # Build GraphQL query
+        # Build GraphQL query. totalCount and pageInfo are requested so a
+        # package with more advisories than one page can hold is paged through
+        # rather than cut off at 100 with nothing said about it.
         query = """
-        query($ecosystem: SecurityAdvisoryEcosystem, $package: String) {
-          securityVulnerabilities(first: 100, ecosystem: $ecosystem, package: $package) {
+        query($ecosystem: SecurityAdvisoryEcosystem, $package: String, $after: String) {
+          securityVulnerabilities(
+            first: 100, ecosystem: $ecosystem, package: $package, after: $after
+          ) {
+            totalCount
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               advisory {
                 ghsaId
@@ -108,18 +152,43 @@ class GitHubClient(BaseClient):
         }
         """
 
-        variables = {"ecosystem": gh_ecosystem, "package": name}
+        nodes: List[Dict[str, Any]] = []
+        total_count: Optional[int] = None
+        cursor: Optional[str] = None
 
-        # Failures propagate: the caller records them as errors and omits the
-        # source from sources_checked. Swallowing them here made an outage
-        # indistinguishable from a package with no known vulnerabilities.
-        response = await self._make_request(
-            "POST",
-            self.base_url,
-            json={"query": query, "variables": variables},
-            headers=self._get_headers(),
-        )
-        return self._parse_response(response, version)
+        for _ in range(MAX_PAGES):
+            variables = {"ecosystem": gh_ecosystem, "package": name, "after": cursor}
+
+            # Failures propagate: the caller records them as errors and omits
+            # the source from sources_checked. Swallowing them here made an
+            # outage indistinguishable from a package with no known
+            # vulnerabilities.
+            response = await self._make_request(
+                "POST",
+                self.base_url,
+                json={"query": query, "variables": variables},
+                headers=self._get_headers(),
+            )
+
+            connection = self._connection(response)
+            nodes.extend(connection.get("nodes") or [])
+            if total_count is None:
+                total_count = connection.get("totalCount")
+
+            page_info = connection.get("pageInfo") or {}
+            cursor = page_info.get("endCursor")
+            if not page_info.get("hasNextPage") or not cursor:
+                break
+
+        # A short list that looks complete is the failure this client keeps
+        # being bitten by. If the page cap stopped us, say how much is missing.
+        if total_count is not None and len(nodes) < total_count:
+            self.parse_warnings.append(
+                f"returned only {len(nodes)} of {total_count} advisories for {name}; "
+                f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
+            )
+
+        return self._parse_nodes(nodes, version, ecosystem)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -133,34 +202,73 @@ class GitHubClient(BaseClient):
         Raises:
             UnsupportedQueryError: Always; GitHub has no CPE lookup
         """
+        self._begin_query()
         raise UnsupportedQueryError("GitHub Advisory Database cannot be queried by CPE; use a PURL")
 
-    def _parse_purl(self, purl: str) -> tuple:
-        """Parse PURL into components.
+    def _parse_purl(self, purl: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Parse a PURL into (ecosystem, GitHub package name, version).
+
+        The name is the one GitHub's advisory database is keyed by, which is
+        not always the PURL name: Maven uses "group:artifact", and npm scopes
+        arrive percent-encoded and have to be decoded.
 
         Args:
             purl: Package URL string
 
         Returns:
-            Tuple of (ecosystem, name, version)
-        """
-        # Simple PURL parser
-        match = re.match(r"pkg:([^/]+)/([^@]+)(?:@(.+))?", purl)
-        if match:
-            return match.group(1), match.group(2), match.group(3)
-        return None, None, None
+            Tuple of (purl type, GitHub package name, version), all None if the
+            PURL cannot be parsed
 
-    def _parse_response(
-        self, response: Dict[str, Any], target_version: Optional[str]
-    ) -> List[Vulnerability]:
-        """Parse GitHub GraphQL response into Vulnerability objects.
+        Raises:
+            UnsupportedQueryError: If the name cannot be built for the
+                ecosystem, which is a question GitHub cannot be asked rather
+                than one it answered with nothing
+        """
+        try:
+            parsed = PackageURL.from_string(purl)
+        except Exception:
+            return None, None, None
+
+        if not parsed.type or not parsed.name:
+            return None, None, None
+
+        # packageurl-python percent-decodes for us, so "%40scope" is already
+        # "@scope" by the time it reaches here.
+        style = _NAME_STYLE.get(parsed.type.lower())
+
+        if style == "colon":
+            if not parsed.namespace:
+                # A Maven coordinate without a group cannot be looked up: the
+                # key GitHub holds is always "group:artifact". Asking for the
+                # bare artifact returns a confident zero.
+                raise UnsupportedQueryError(
+                    f"Maven PURL has no group, so no GitHub package name exists: {purl}"
+                )
+            name = f"{parsed.namespace}:{parsed.name}"
+        elif style == "slash":
+            name = f"{parsed.namespace}/{parsed.name}" if parsed.namespace else parsed.name
+        elif style == "name":
+            name = parsed.name
+        else:
+            # An unmapped type is caught by the ECOSYSTEM_MAP check in the
+            # caller, which reports it as unsupported. Falling back to the
+            # PURL's own shape here keeps that the single place it is decided.
+            name = f"{parsed.namespace}/{parsed.name}" if parsed.namespace else parsed.name
+
+        return parsed.type, name, parsed.version
+
+    def _connection(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate one GraphQL page and return its connection object.
 
         Args:
-            response: Raw API response
-            target_version: Specific version to check (optional)
+            response: Raw API response for a single page
 
         Returns:
-            List of Vulnerability objects
+            The securityVulnerabilities connection
+
+        Raises:
+            RateLimitError: If GitHub refused the request for rate limiting
+            RuntimeError: If the response carries errors or no data
         """
         # GraphQL reports failures - including rate limiting - as HTTP 200 with
         # an errors array and, when the request failed before execution, no
@@ -180,13 +288,34 @@ class GitHubClient(BaseClient):
         if "data" not in response or response.get("data") is None:
             raise RuntimeError("GitHub GraphQL response contained no data")
 
+        return response["data"].get("securityVulnerabilities") or {}
+
+    def _parse_nodes(
+        self,
+        vulns: List[Dict[str, Any]],
+        target_version: Optional[str],
+        ecosystem: Optional[str] = None,
+    ) -> List[Vulnerability]:
+        """Turn advisory nodes into Vulnerability objects.
+
+        Args:
+            vulns: Advisory nodes, possibly gathered across several pages
+            target_version: Specific version to check (optional)
+            ecosystem: PURL type, used to order versions correctly
+
+        Returns:
+            List of Vulnerability objects
+
+        Raises:
+            RuntimeError: If records were returned and none could be parsed
+        """
         vulnerabilities = []
-        vulns = response["data"].get("securityVulnerabilities", {}).get("nodes", [])
         parse_failures = 0
+        last_error = ""
 
         for vuln_data in vulns:
             try:
-                vuln = self._parse_vulnerability(vuln_data, target_version)
+                vuln = self._parse_vulnerability(vuln_data, target_version, ecosystem)
                 if vuln:
                     vulnerabilities.append(vuln)
             except Exception as e:
@@ -194,6 +323,7 @@ class GitHubClient(BaseClient):
                 # legitimately does not apply - a version outside the affected
                 # range - and must stay distinct from a record that broke.
                 parse_failures += 1
+                last_error = str(e)
                 if self.verbose:
                     print(f"Error parsing GitHub vulnerability: {e}")
                 continue
@@ -203,16 +333,24 @@ class GitHubClient(BaseClient):
         if vulns and parse_failures == len(vulns):
             raise RuntimeError(f"GitHub returned {len(vulns)} advisories but none could be parsed")
 
+        # Below that threshold the query still has an answer, just not a whole
+        # one. Say so rather than handing back a short list that looks complete.
+        self._note_dropped_records(parse_failures, len(vulns), last_error)
+
         return vulnerabilities
 
     def _parse_vulnerability(
-        self, data: Dict[str, Any], target_version: Optional[str]
+        self,
+        data: Dict[str, Any],
+        target_version: Optional[str],
+        ecosystem: Optional[str] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
             target_version: Specific version to check
+            ecosystem: PURL type, used to order versions correctly
 
         Returns:
             Vulnerability object or None if not applicable
@@ -231,12 +369,16 @@ class GitHubClient(BaseClient):
             raise ValueError("GitHub advisory has no ghsaId")
 
         # Check if version is affected (if specified)
+        version_match = VersionMatch.NOT_EVALUATED
         if target_version:
-            vulnerable_range = data.get("vulnerableVersionRange", "")
-            if not self._is_version_affected(target_version, vulnerable_range):
+            in_range = evaluate_range(
+                ecosystem, target_version, data.get("vulnerableVersionRange", "") or ""
+            )
+            if in_range is False:
                 # The only legitimate None: the record parsed fine and simply
                 # does not apply to the version asked about.
                 return None
+            version_match = VersionMatch.AFFECTED if in_range else VersionMatch.UNCONFIRMED
 
         # Parse severity
         severity_str = advisory.get("severity", "UNKNOWN")
@@ -316,25 +458,5 @@ class GitHubClient(BaseClient):
             references=references,
             cwe_ids=cwe_ids,
             aliases=aliases,
+            version_match=version_match,
         )
-
-    def _is_version_affected(self, version: str, vulnerable_range: str) -> bool:
-        """Check if a version is within a vulnerable range.
-
-        Args:
-            version: Version to check
-            vulnerable_range: Vulnerability range string
-
-        Returns:
-            True if version is affected
-        """
-        # Simple version range check
-        # In production, use a proper version comparison library
-        if not vulnerable_range:
-            return True
-
-        # Parse simple ranges like ">= 1.0.0, < 2.0.0"
-        if "<" in vulnerable_range or ">" in vulnerable_range:
-            return True  # Simplified - assume affected
-
-        return True

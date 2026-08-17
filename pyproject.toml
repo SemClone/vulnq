@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vulnq"
-version = "1.3.0"
+version = "1.4.0"
 description = "Lightweight vulnerability query tool for multi-source security data aggregation"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -54,6 +54,7 @@ dependencies = [
     "aiohttp>=3.8.0",
     "pydantic>=2.0.0",
     "packageurl-python>=0.11.0",
+    "packaging>=21.0",
     "rich>=13.0.0",
     "python-dateutil>=2.8.0",
     "pyyaml>=6.0",
