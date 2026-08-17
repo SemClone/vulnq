@@ -9,7 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import __version__
-from .core import VulnerabilityQuery
+from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity
 
 console = Console()
@@ -179,7 +179,11 @@ def print_markdown(result: QueryResult):
     help="Minimum severity to report",
 )
 @click.option("--show-fixes", is_flag=True, help="Show fixed versions in output")
-@click.option("--sources", multiple=True, help="Vulnerability sources to check (osv, github, nvd)")
+@click.option(
+    "--sources",
+    multiple=True,
+    help="Sources to check: osv, github, nvd. Naming vulnerablecode selects it instead.",
+)
 @click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
 @click.option("--no-cache", is_flag=True, help="Disable caching")
 @click.option(
@@ -272,10 +276,31 @@ def main(
     if sources:
         from .models import VulnerabilitySource
 
-        config.sources = [VulnerabilitySource(s) for s in sources]
+        parsed = []
+        for name in sources:
+            try:
+                parsed.append(VulnerabilitySource(name))
+            except ValueError:
+                valid = ", ".join(source.value for source in VulnerabilitySource)
+                console.print(f"[red]Unknown source '{name}'.[/red] Available sources: {valid}")
+                sys.exit(2)
+
+        # VulnerableCode replaces the fan-out rather than joining it, so naming
+        # it here means the same thing as passing --use-vulnerablecode. Doing
+        # nothing instead would leave the caller with no sources at all.
+        if VulnerabilitySource.VULNERABLECODE in parsed:
+            config.use_vulnerablecode = True
+            parsed = [s for s in parsed if s is not VulnerabilitySource.VULNERABLECODE]
+
+        if parsed:
+            config.sources = parsed
 
     # Initialize query engine
-    vq = VulnerabilityQuery(config=config, verbose=verbose)
+    try:
+        vq = VulnerabilityQuery(config=config, verbose=verbose)
+    except NoSourcesConfiguredError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(2)
 
     # Process queries
     for query_str in queries:
