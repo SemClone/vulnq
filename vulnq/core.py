@@ -3,7 +3,7 @@
 import asyncio
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .clients import (
@@ -34,6 +34,22 @@ FANOUT_SOURCES = (
     VulnerabilitySource.GITHUB,
     VulnerabilitySource.NVD,
 )
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Return a timezone-aware datetime, assuming UTC when none is given.
+
+    Sources disagree about offsets: NVD publishes naive timestamps, OSV and
+    GitHub publish them with a Z. Comparing the two raises, so anything that
+    orders dates across sources has to normalize first.
+
+    Args:
+        value: A naive or aware datetime
+
+    Returns:
+        The same instant, timezone-aware
+    """
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _unsupported_identifier_error(id_type: IdentifierType) -> str:
@@ -482,9 +498,13 @@ class VulnerabilityQuery:
                 merged.cvss_score = vuln.cvss_score
                 merged.cvss_vector = vuln.cvss_vector
 
-            # Use earliest published date
+            # Use earliest published date. NVD publishes timestamps without an
+            # offset while OSV and GitHub publish them with one, so comparing
+            # them raw raises the moment a CVE is found by both - which takes
+            # the whole query down, findings from every source included.
             if vuln.published_date and (
-                not merged.published_date or vuln.published_date < merged.published_date
+                not merged.published_date
+                or _as_utc(vuln.published_date) < _as_utc(merged.published_date)
             ):
                 merged.published_date = vuln.published_date
 

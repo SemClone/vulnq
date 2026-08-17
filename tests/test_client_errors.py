@@ -197,6 +197,7 @@ class TestIsConclusive:
         payload = json.loads(json.dumps(result.model_dump(mode="json")))
 
         assert payload["sources_checked"] == []
+        assert payload["is_conclusive"] is False
         assert payload["errors"]
 
 
@@ -362,27 +363,100 @@ class TestNVDMappings:
             .startswith("cpe:2.3:a:openjsf:express")
         )
 
-    def test_records_that_do_not_apply_are_not_a_failure(self, monkeypatch):
-        """A record parsed to None is "does not apply", not a shape change.
 
-        Guards a trap in the all-records-failed check: version filtering
-        legitimately discards records, and treating that as a broken response
-        would report a clean package as an error.
+class TestMalformedVersusInapplicable:
+    """Two different reasons a record yields nothing, with opposite meanings."""
+
+    def test_inapplicable_record_is_not_a_failure(self, monkeypatch):
+        """A record that parsed fine and does not apply is a real clean answer.
+
+        This is the trap in the all-records-failed guard: once version
+        filtering actually filters (issue #28), every advisory affecting only
+        older versions parses to None. Counting those as failures would report
+        an up-to-date package as a broken response.
         """
 
         async def no_session(self):
             return None
 
-        async def not_applicable(self, method, url, **kwargs):
-            # Well-formed nodes that _parse_vulnerability returns None for.
-            return {"data": {"securityVulnerabilities": {"nodes": [{}, {}]}}}
+        async def inapplicable(self, method, url, **kwargs):
+            return {
+                "data": {
+                    "securityVulnerabilities": {
+                        "nodes": [
+                            {
+                                "advisory": {"ghsaId": "GHSA-aaaa-bbbb-cccc", "summary": "old"},
+                                "vulnerableVersionRange": "< 1.0.0",
+                            }
+                        ]
+                    }
+                }
+            }
 
         monkeypatch.setattr("vulnq.clients.base.BaseClient.start_session", no_session)
         monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
-        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", not_applicable)
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", inapplicable)
+        # Force the record out of scope the way the filter will once it works.
+        monkeypatch.setattr(
+            "vulnq.clients.github.GitHubClient._is_version_affected",
+            lambda self, version, rng: False,
+        )
 
         result = engine(VulnerabilitySource.GITHUB).query(PURL)
 
         assert result.sources_checked == [VulnerabilitySource.GITHUB]
         assert result.is_conclusive is True
         assert result.errors == []
+
+    def test_malformed_record_is_a_failure(self, monkeypatch):
+        """A node with no advisory is a shape change, not an inapplicable record."""
+
+        async def no_session(self):
+            return None
+
+        async def malformed(self, method, url, **kwargs):
+            return {"data": {"securityVulnerabilities": {"nodes": [{}, {}]}}}
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient.start_session", no_session)
+        monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", malformed)
+
+        result = engine(VulnerabilitySource.GITHUB).query(PURL)
+
+        assert result.sources_checked == []
+        assert result.is_conclusive is False
+        assert any("none could be parsed" in error for error in result.errors)
+
+
+class TestMergeAcrossSources:
+    """Sources disagree about timezone offsets; merging must survive it."""
+
+    def test_naive_and_aware_dates_merge(self):
+        """NVD dates are naive, OSV dates are aware; comparing them raised.
+
+        The crash discarded every finding from every source, so one CVE found
+        by both NVD and OSV took the whole query down with it.
+        """
+        from datetime import datetime, timezone
+
+        from vulnq.models import Vulnerability
+
+        naive = Vulnerability(
+            id="CVE-2024-29041",
+            source=VulnerabilitySource.NVD,
+            summary="from nvd",
+            published_date=datetime(2024, 3, 25, 22, 15, 10),
+        )
+        aware = Vulnerability(
+            id="CVE-2024-29041",
+            source=VulnerabilitySource.OSV,
+            summary="from osv",
+            published_date=datetime(2024, 3, 20, 12, 0, tzinfo=timezone.utc),
+        )
+
+        merged = VulnerabilityQuery(
+            config=Configuration(sources=[VulnerabilitySource.OSV])
+        )._merge_vulnerabilities([naive, aware])
+
+        # The earlier of the two wins, and nothing raises.
+        assert merged.published_date.replace(tzinfo=None) == datetime(2024, 3, 20, 12, 0)

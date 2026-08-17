@@ -217,19 +217,25 @@ class GitHubClient(BaseClient):
         Returns:
             Vulnerability object or None if not applicable
         """
-        advisory = data.get("advisory", {})
+        advisory = data.get("advisory") or {}
         if not advisory:
-            return None
+            # Malformed, not inapplicable: GitHub declares advisory non-null,
+            # so its absence is a shape change. Raising keeps it countable by
+            # the all-records-failed guard, which only sees exceptions.
+            raise ValueError("GitHub advisory node has no advisory")
 
         # Get vulnerability ID
         vuln_id = advisory.get("ghsaId", "")
         if not vuln_id:
-            return None
+            # Also malformed rather than inapplicable.
+            raise ValueError("GitHub advisory has no ghsaId")
 
         # Check if version is affected (if specified)
         if target_version:
             vulnerable_range = data.get("vulnerableVersionRange", "")
             if not self._is_version_affected(target_version, vulnerable_range):
+                # The only legitimate None: the record parsed fine and simply
+                # does not apply to the version asked about.
                 return None
 
         # Parse severity

@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -86,6 +87,36 @@ class BaseClient(ABC):
             await self.session.close()
             self.session = None
 
+    @staticmethod
+    def _retry_hint(headers: Any) -> str:
+        """Describe when a rate-limited request may be retried.
+
+        Retry-After is a delay in seconds, but X-RateLimit-Reset is an epoch
+        timestamp - reporting it as a delay produced advice like "retry after
+        1786958411 seconds".
+
+        Args:
+            headers: Response headers
+
+        Returns:
+            A human-readable retry hint
+        """
+        retry_after = headers.get("Retry-After")
+        if retry_after:
+            return f"Retry after {retry_after} seconds."
+
+        reset = headers.get("X-RateLimit-Reset")
+        if reset:
+            try:
+                seconds = int(float(reset)) - int(time.time())
+            except (TypeError, ValueError):
+                return "Retry later."
+            if seconds > 0:
+                return f"Resets in {seconds} seconds."
+            return "Resets shortly."
+
+        return "Retry later."
+
     async def _make_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
         """Make an HTTP request with retries.
 
@@ -122,11 +153,8 @@ class BaseClient(ABC):
                             and response.headers.get("X-RateLimit-Remaining") == "0"
                         )
                         if rate_limited:
-                            retry_after = response.headers.get(
-                                "Retry-After", response.headers.get("X-RateLimit-Reset", "60")
-                            )
                             raise RateLimitError(
-                                f"Rate limit exceeded. Retry after {retry_after} seconds"
+                                f"Rate limit exceeded. {self._retry_hint(response.headers)}"
                             )
 
                         response.raise_for_status()

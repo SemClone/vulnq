@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero findings; parsing none of N is a shape change, not a clean package
 - Markdown output carried none of the new caveats, so a saved report of an
   inconclusive query read as clean for as long as the file existed
+- Merging a CVE found by both NVD and another source raised a timezone
+  comparison error that failed the entire query and discarded every finding
+  from every source. NVD publishes timestamps without an offset and the others
+  publish them with one. This surfaced only once the npm `express` mapping was
+  corrected, because that was the first time real NVD results reached the merge
+- A GitHub advisory node missing its advisory or id is now counted as a parse
+  failure rather than skipped; only a record that does not apply to the queried
+  version yields nothing without being counted
+- A rate-limit message reported `X-RateLimit-Reset`, an epoch timestamp, as a
+  delay in seconds
 
 ### Added
 - `sources_skipped` on `QueryResult`, mapping a source to why it could not be
