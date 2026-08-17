@@ -20,6 +20,29 @@ from .models import (
 from .utils import detect_identifier_type, parse_identifier
 
 
+def _unsupported_identifier_error(id_type: IdentifierType) -> str:
+    """Describe an identifier type no configured client can answer.
+
+    Args:
+        id_type: The detected identifier type
+
+    Returns:
+        An error string for the result envelope
+    """
+    return (
+        f"No configured source can be queried by {id_type.value}; "
+        "no lookup was performed. Use a PURL or a CPE."
+    )
+
+
+class NoSourcesConfiguredError(RuntimeError):
+    """Raised when a configuration yields no queryable vulnerability sources.
+
+    Returning an empty result instead would be indistinguishable from a clean
+    bill of health, and would fail in the dangerous direction.
+    """
+
+
 class VulnerabilityQuery:
     """Main vulnerability query engine."""
 
@@ -100,6 +123,17 @@ class VulnerabilityQuery:
         if VulnerabilitySource.NVD in self.config.sources:
             clients[VulnerabilitySource.NVD] = NVDClient(
                 api_key=self.config.nvd_api_key, timeout=self.config.timeout, verbose=self.verbose
+            )
+
+        if not clients:
+            # An empty client set would return an empty result, which reads as
+            # a clean bill of health. Fail here instead, while the caller can
+            # still see that nothing was ever going to be queried.
+            requested = ", ".join(source.value for source in self.config.sources) or "none"
+            available = ", ".join(source.value for source in VulnerabilitySource)
+            raise NoSourcesConfiguredError(
+                f"No queryable vulnerability sources configured (requested: {requested}). "
+                f"Available sources: {available}."
             )
 
         return clients
@@ -192,7 +226,10 @@ class VulnerabilityQuery:
             elif id_type == IdentifierType.CPE:
                 vulnerabilities = await client.query_cpe(identifier)
             else:
-                vulnerabilities = []
+                # Nothing was queried, so the source was not checked. Claiming
+                # otherwise turns an unanswerable query into a clean result.
+                result.errors.append(_unsupported_identifier_error(id_type))
+                return result
 
             result.vulnerabilities = vulnerabilities
             result.sources_checked.append(VulnerabilitySource.VULNERABLECODE)
@@ -248,6 +285,9 @@ class VulnerabilityQuery:
             # Clean up sessions even if no queries
             for client in clients_to_close:
                 await client.close_session()
+            # No client could answer this identifier type. Say so, rather than
+            # handing back an empty list that reads as "nothing found".
+            result.errors.append(_unsupported_identifier_error(id_type))
             return []
 
         # Execute all queries in parallel

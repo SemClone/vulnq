@@ -9,7 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import __version__
-from .core import VulnerabilityQuery
+from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity
 
 console = Console()
@@ -272,10 +272,19 @@ def main(
     if sources:
         from .models import VulnerabilitySource
 
-        config.sources = [VulnerabilitySource(s) for s in sources]
+        try:
+            config.sources = [VulnerabilitySource(s) for s in sources]
+        except ValueError:
+            valid = ", ".join(source.value for source in VulnerabilitySource)
+            console.print(f"[red]Unknown source.[/red] Available sources: {valid}")
+            sys.exit(2)
 
     # Initialize query engine
-    vq = VulnerabilityQuery(config=config, verbose=verbose)
+    try:
+        vq = VulnerabilityQuery(config=config, verbose=verbose)
+    except NoSourcesConfiguredError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(2)
 
     # Process queries
     for query_str in queries:

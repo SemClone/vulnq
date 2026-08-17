@@ -80,11 +80,22 @@ for vuln in results.vulnerabilities:
 
 ## Supported Vulnerability Sources
 
+Queried per lookup, in parallel, then de-duplicated:
+
 - **OSV.dev** - Google's Open Source Vulnerability database
 - **GitHub Advisory Database** - GitHub Security Advisories
 - **NIST NVD** - National Vulnerability Database
-- **FIRST.org** - Forum of Incident Response and Security Teams (planned)
-- **Sonatype OSS Index** - Component vulnerability data (planned)
+- **VulnerableCode** - opt-in via `--use-vulnerablecode`, replaces the above
+
+Joined from published snapshots rather than queried (see
+[Exploitability Enrichment](#exploitability-enrichment)):
+
+- **CISA KEV** - known-exploited status
+- **FIRST EPSS** - exploitation probability
+
+Every source named in `VulnerabilitySource` has a working client. Requesting a
+source that does not exist fails immediately rather than returning an empty
+result that reads as a clean scan.
 
 ## Supported Identifier Formats
 

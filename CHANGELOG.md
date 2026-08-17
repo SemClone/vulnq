@@ -5,7 +5,29 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-08-17
+## [1.2.0] - 2026-08-17
+
+### Removed - BREAKING
+- `VulnerabilitySource.SNYK` and `VulnerabilitySource.SONATYPE`. Both were
+  declared but had no client, so configuring either produced no client, no
+  error, and an empty result — which reads as "this package has no known
+  vulnerabilities". The failure was silent and in the dangerous direction.
+  Code naming these members now fails at the point of use instead of returning
+  a false clean bill of health. Nothing in the SEMCL.ONE toolchain referenced
+  them.
+
+### Added
+- `NoSourcesConfiguredError`, raised when a configuration yields no queryable
+  source, rather than returning an empty result that cannot be distinguished
+  from a clean scan
+- An identifier type no client can answer — a file hash today — is reported in
+  `errors` instead of returning an empty result silently
+
+### Fixed
+- `sources_checked` claimed VulnerableCode had been checked on queries where no
+  lookup was performed
+- The CLI printed a raw traceback for an unknown `--sources` value; it now
+  names the valid sources and exits 2
 
 ### Added
 - Exploitability enrichment from published snapshots: CISA KEV known-exploited

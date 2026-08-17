@@ -30,13 +30,16 @@ class IdentifierType(str, Enum):
 
 
 class VulnerabilitySource(str, Enum):
-    """Vulnerability data sources."""
+    """Vulnerability data sources.
+
+    Every member here has a working client. A source that cannot be queried
+    must not be nameable: configuring one produced no client, no error, and an
+    empty result, which reads as "this package has no known vulnerabilities".
+    """
 
     OSV = "osv"
     GITHUB = "github"
     NVD = "nvd"
-    SNYK = "snyk"
-    SONATYPE = "sonatype"
     VULNERABLECODE = "vulnerablecode"
 
 
