@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ..models import Severity, Vulnerability, VulnerabilitySource
+from packageurl import PackageURL
+
+from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
 
@@ -29,6 +31,8 @@ class OSVClient(BaseClient):
         Returns:
             List of normalized Vulnerability objects
         """
+        self._begin_query()
+
         url = f"{self.base_url}/query"
         data = {"package": {"purl": purl}}
 
@@ -36,7 +40,26 @@ class OSVClient(BaseClient):
         # source from sources_checked. Swallowing them here made an outage
         # indistinguishable from a package with no known vulnerabilities.
         response = await self._make_request("POST", url, json=data)
-        return self._parse_response(response)
+        return self._parse_response(response, self._queried_version(purl))
+
+    @staticmethod
+    def _queried_version(purl: str) -> Optional[str]:
+        """Return the version the PURL pins, if any.
+
+        OSV filters by version server-side, but only when the query carries
+        one. A versionless PURL gets every advisory for the package back, and
+        claiming those were version-matched would be a claim nobody checked.
+
+        Args:
+            purl: Package URL string
+
+        Returns:
+            The pinned version, or None
+        """
+        try:
+            return PackageURL.from_string(purl).version
+        except Exception:
+            return None
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -49,13 +72,17 @@ class OSVClient(BaseClient):
         Raises:
             UnsupportedQueryError: Always; OSV is a PURL-keyed database
         """
+        self._begin_query()
         raise UnsupportedQueryError("OSV cannot be queried by CPE; use a PURL")
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[Vulnerability]:
+    def _parse_response(
+        self, response: Dict[str, Any], queried_version: Optional[str] = None
+    ) -> List[Vulnerability]:
         """Parse OSV API response into Vulnerability objects.
 
         Args:
             response: Raw API response
+            queried_version: Version pinned by the query, if any
 
         Returns:
             List of Vulnerability objects
@@ -63,10 +90,11 @@ class OSVClient(BaseClient):
         vulnerabilities = []
         vulns = response.get("vulns", [])
         parse_failures = 0
+        last_error = ""
 
         for vuln_data in vulns:
             try:
-                vuln = self._parse_vulnerability(vuln_data)
+                vuln = self._parse_vulnerability(vuln_data, queried_version)
                 if vuln:
                     vulnerabilities.append(vuln)
                 else:
@@ -77,6 +105,7 @@ class OSVClient(BaseClient):
                     parse_failures += 1
             except Exception as e:
                 parse_failures += 1
+                last_error = str(e)
                 if self.verbose:
                     print(f"Error parsing OSV vulnerability: {e}")
                 continue
@@ -86,13 +115,20 @@ class OSVClient(BaseClient):
         if vulns and parse_failures == len(vulns):
             raise RuntimeError(f"OSV returned {len(vulns)} records but none could be parsed")
 
+        # Below that threshold the query still has an answer, just not a whole
+        # one. Say so rather than handing back a short list that looks complete.
+        self._note_dropped_records(parse_failures, len(vulns), last_error)
+
         return vulnerabilities
 
-    def _parse_vulnerability(self, data: Dict[str, Any]) -> Optional[Vulnerability]:
+    def _parse_vulnerability(
+        self, data: Dict[str, Any], queried_version: Optional[str] = None
+    ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
+            queried_version: Version pinned by the query, if any
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -215,4 +251,7 @@ class OSVClient(BaseClient):
             references=references,
             cwe_ids=[],  # OSV doesn't typically provide CWE IDs
             aliases=aliases,
+            version_match=(
+                VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED
+            ),
         )

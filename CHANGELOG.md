@@ -5,6 +5,55 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-17
+
+### Fixed
+- GitHub's version-range filter never excluded anything. `_is_version_affected`
+  returned `True` on every path, including the one commented "assume affected",
+  so every advisory GitHub holds for a package was reported regardless of the
+  queried version. `pkg:npm/express@4.17.1` reported ten advisories where three
+  apply, and a version on 4.x was told it was affected by an advisory fixed in
+  1.0.1. Ranges are now evaluated with the ecosystem's own version ordering
+- GitHub was queried under package names that cannot exist. Its advisory
+  database keys Maven as `group:artifact`, but the PURL name was passed through
+  verbatim as `group/artifact`, so every canonical Maven coordinate returned
+  zero advisories and was counted as checked — a structurally wrong question
+  wearing the "asked and clean" costume. `log4j-core@2.14.1` now reports seven
+  advisories including Log4Shell, where it previously reported none
+- Scoped npm packages were queried as `%40scope/pkg`. The percent-encoding was
+  never decoded, so a large share of the npm ecosystem returned a confident
+  zero. `@babel/traverse` now resolves
+- Records that failed to parse below the all-records-failed threshold vanished
+  into a verbose print. Nine of ten broken advisories could be dropped and the
+  result still looked complete. They are now reported in `warnings`
+- NVD had no all-records-failed guard at all, so a response whose every record
+  was unparseable came back as a clean scan. It now raises, as OSV and GitHub
+  already did
+
+### Added
+- `Vulnerability.version_match`, recording whether the queried version was
+  actually checked against the advisory's affected range, and by whom:
+  `affected` (vulnq evaluated the range and it matches), `source_filtered` (the
+  upstream source filtered by version itself), `unconfirmed` (the range could
+  not be evaluated, so the advisory is reported as a precaution), and
+  `not_evaluated` (the query pinned no version, so nothing was filtered)
+- `QueryResult.warnings`, for a source that answered but whose answer was
+  incomplete. Distinct from `errors`, which means the source did not answer
+- `vulnq.versions`, with ecosystem-aware version ordering for semver, Maven,
+  and PEP 440, and an evaluator for GitHub's `vulnerableVersionRange` grammar
+- `packaging` as a direct dependency, for PEP 440 ordering
+
+### Changed
+- GitHub result counts drop for versioned queries, because the version filter
+  now works. Counts rise for Maven and scoped npm, because those were
+  previously unanswerable. Anyone holding a baseline will see both move
+- An advisory whose range cannot be evaluated is reported rather than dropped,
+  and marked `unconfirmed` in JSON and `[unconfirmed]` in the table. Dropping
+  an advisory that might apply is the dangerous direction; over-reporting is
+  acceptable only when it is visible as such
+- The CLI printed `errors` under a "Warnings" heading. Errors are now labelled
+  as errors, with incomplete answers listed separately
+
 ## [1.3.0] - 2026-08-17
 
 ### Fixed

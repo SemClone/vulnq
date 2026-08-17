@@ -53,6 +53,37 @@ class BaseClient(ABC):
         self.verbose = verbose
         self.session: Optional[aiohttp.ClientSession] = None
         self._semaphore = asyncio.Semaphore(5)  # Limit concurrent requests
+        # Populated per query with records the source returned but this client
+        # could not turn into a finding. Below the all-records-failed threshold
+        # those used to disappear into a verbose print, so a result short a few
+        # advisories was indistinguishable from a complete one.
+        self.parse_warnings: List[str] = []
+
+    def _begin_query(self) -> None:
+        """Clear per-query state before a new lookup.
+
+        Called at the top of every query method so warnings describe the query
+        being answered rather than accumulating across a client's lifetime.
+        """
+        self.parse_warnings = []
+
+    def _note_dropped_records(self, dropped: int, total: int, detail: str = "") -> None:
+        """Record that part of a source's answer could not be parsed.
+
+        Args:
+            dropped: Number of records that failed to parse
+            total: Number of records the source returned
+            detail: Optional last error message for context
+        """
+        if dropped <= 0:
+            return
+        message = (
+            f"{dropped} of {total} records returned by {self.source.value} could not be "
+            "parsed and are missing from this result"
+        )
+        if detail:
+            message += f" (last error: {detail})"
+        self.parse_warnings.append(message)
 
     @property
     @abstractmethod

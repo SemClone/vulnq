@@ -120,6 +120,47 @@ If no source answers, the CLI says so and exits 1 — zero findings from zero
 sources is not a clean scan. Findings themselves are reported through the
 output, not the exit code.
 
+A source can also answer incompletely. When records come back that vulnq cannot
+parse, the ones it could parse are still reported, and `warnings` says how many
+were lost:
+
+```console
+$ vulnq pkg:npm/example@1.0.0
+Found 4 vulnerabilities: 1 critical, 0 high
+
+Incomplete answers:
+  • osv: 2 of 6 records returned by osv could not be parsed and are missing
+    from this result
+```
+
+That is the safe direction — under-reporting, not a false clean bill — but only
+if you can see it happened.
+
+### Version matching
+
+Sources disagree about who filters by version. OSV, NVD, and VulnerableCode do
+it server-side. The GitHub Advisory Database returns every advisory it holds
+for a package and leaves the filtering to the caller, in a range grammar like
+`>= 2.0-beta9, < 2.25.3`. vulnq evaluates those using the ecosystem's own
+version ordering — semver, Maven qualifier ranks, or PEP 440.
+
+Every finding records which of those happened, in `version_match`:
+
+| Value | Meaning |
+| --- | --- |
+| `affected` | vulnq evaluated the range; the queried version is inside it |
+| `source_filtered` | The upstream source filtered by version itself |
+| `unconfirmed` | The range could not be evaluated; reported as a precaution |
+| `not_evaluated` | The query pinned no version, so nothing was filtered |
+
+An advisory whose range cannot be evaluated is **reported, not dropped**, and
+marked `[unconfirmed]` in the table. Dropping an advisory that might apply is
+the dangerous direction; over-reporting is acceptable only when it is visible.
+
+Maven `SNAPSHOT`/`sp` qualifier ordering and Go pseudo-versions are handled.
+Anything else that will not parse falls through to `unconfirmed` rather than
+being guessed at.
+
 ## Supported Identifier Formats
 
 ### Package URLs (PURLs)
@@ -271,6 +312,7 @@ cat sbom.json | vulnq --input - --format markdown > vulns.md
       "cvss_score": 7.5,
       "summary": "Remote Code Execution...",
       "fixed_versions": ["4.17.2", "4.18.0"],
+      "version_match": "affected",
       "references": [...]
     }
   ],

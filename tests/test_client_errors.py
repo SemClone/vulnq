@@ -398,17 +398,16 @@ class TestMalformedVersusInapplicable:
         monkeypatch.setattr("vulnq.clients.base.BaseClient.start_session", no_session)
         monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
         monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", inapplicable)
-        # Force the record out of scope the way the filter will once it works.
-        monkeypatch.setattr(
-            "vulnq.clients.github.GitHubClient._is_version_affected",
-            lambda self, version, rng: False,
-        )
 
+        # 4.17.1 is outside "< 1.0.0", so the real range filter drops it.
         result = engine(VulnerabilitySource.GITHUB).query(PURL)
 
+        assert result.vulnerabilities == []
         assert result.sources_checked == [VulnerabilitySource.GITHUB]
         assert result.is_conclusive is True
         assert result.errors == []
+        # Dropped for being inapplicable, not for being broken.
+        assert result.warnings == []
 
     def test_malformed_record_is_a_failure(self, monkeypatch):
         """A node with no advisory is a shape change, not an inapplicable record."""

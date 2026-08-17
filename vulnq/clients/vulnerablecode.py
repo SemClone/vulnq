@@ -3,7 +3,9 @@
 import urllib.parse
 from typing import Any, Dict, List, Optional
 
-from ..models import Severity, Vulnerability, VulnerabilitySource
+from packageurl import PackageURL
+
+from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
 
@@ -31,6 +33,8 @@ class VulnerableCodeClient(BaseClient):
         Returns:
             List of normalized Vulnerability objects
         """
+        self._begin_query()
+
         # URL encode the PURL
         encoded_purl = urllib.parse.quote(purl, safe="")
         url = f"{self.base_url}/packages/?purl={encoded_purl}"
@@ -52,6 +56,7 @@ class VulnerableCodeClient(BaseClient):
         Raises:
             UnsupportedQueryError: Always; VulnerableCode has no CPE lookup
         """
+        self._begin_query()
         raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
 
     def _parse_response(self, response: Dict[str, Any], purl: str) -> List[Vulnerability]:
@@ -75,15 +80,39 @@ class VulnerableCodeClient(BaseClient):
         package_data = results[0] if results else {}
 
         # Process affected_by_vulnerabilities
-        for vuln_data in package_data.get("affected_by_vulnerabilities", []):
+        affecting = package_data.get("affected_by_vulnerabilities", [])
+        parse_failures = 0
+        last_error = ""
+
+        for vuln_data in affecting:
             try:
-                vuln = self._parse_vulnerability(vuln_data, is_fixed=False)
+                vuln = self._parse_vulnerability(
+                    vuln_data, is_fixed=False, queried_version=self._queried_version(purl)
+                )
                 if vuln:
                     vulnerabilities.append(vuln)
+                else:
+                    # VulnerableCode has already filtered by version, so a
+                    # record that yields nothing here is malformed rather than
+                    # inapplicable.
+                    parse_failures += 1
             except Exception as e:
+                parse_failures += 1
+                last_error = str(e)
                 if self.verbose:
                     print(f"Error parsing VulnerableCode vulnerability: {e}")
                 continue
+
+        # Every record failing to parse means the response shape changed, not
+        # that the package is clean.
+        if affecting and parse_failures == len(affecting):
+            raise RuntimeError(
+                f"VulnerableCode returned {len(affecting)} records but none could be parsed"
+            )
+
+        # Below that threshold the query still has an answer, just not a whole
+        # one. Say so rather than handing back a short list that looks complete.
+        self._note_dropped_records(parse_failures, len(affecting), last_error)
 
         # Also check fixing_vulnerabilities to get fixed version info
         fixed_vulns = {}
@@ -99,14 +128,34 @@ class VulnerableCodeClient(BaseClient):
 
         return vulnerabilities
 
+    @staticmethod
+    def _queried_version(purl: str) -> Optional[str]:
+        """Return the version the PURL pins, if any.
+
+        VulnerableCode filters by version server-side, but only when the query
+        carries one. A versionless PURL gets every advisory for the package
+        back, and calling those version-matched would claim a check nobody ran.
+
+        Args:
+            purl: Package URL string
+
+        Returns:
+            The pinned version, or None
+        """
+        try:
+            return PackageURL.from_string(purl).version
+        except Exception:
+            return None
+
     def _parse_vulnerability(
-        self, data: Dict[str, Any], is_fixed: bool = False
+        self, data: Dict[str, Any], is_fixed: bool = False, queried_version: Optional[str] = None
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
             is_fixed: Whether this is from fixing_vulnerabilities
+            queried_version: Version pinned by the query, if any
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -185,6 +234,9 @@ class VulnerableCodeClient(BaseClient):
             published_date=None,  # VulnerableCode doesn't provide dates in this endpoint
             modified_date=None,
             references=references,
+            version_match=(
+                VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED
+            ),
             cwe_ids=[],  # Would need to parse from references or description
             aliases=aliases,
         )
