@@ -136,6 +136,26 @@ def print_markdown(result: QueryResult):
     if result.enrichment:
         md += "\n"
 
+    # A saved report must carry the same caveats as the terminal output, or an
+    # inconclusive query reads as a clean scan for as long as the file exists.
+    if not result.is_conclusive:
+        md += (
+            "> **No source answered this query.** Zero results here means nobody "
+            "looked, not that nothing was found.\n\n"
+        )
+
+    if result.sources_skipped:
+        md += "### Sources Skipped\n\n"
+        for source, reason in result.sources_skipped.items():
+            md += f"- **{source}:** {reason}\n"
+        md += "\n"
+
+    if result.errors:
+        md += "### Errors\n\n"
+        for error in result.errors:
+            md += f"- {error}\n"
+        md += "\n"
+
     if result.vulnerabilities:
         md += "## Vulnerabilities\n\n"
 

@@ -83,8 +83,10 @@ class NVDClient(BaseClient):
         Returns:
             CPE string or None
         """
-        # Simple mapping for common packages
-        # In production, use a comprehensive mapping database
+        # A hardcoded table that returns a *wrong* CPE is worse than one that
+        # returns nothing: NVD accepts the bogus name, answers with zero
+        # results, and the source counts as checked. Every entry below is
+        # verified against live NVD data; add nothing here unverified.
 
         match = re.match(r"pkg:([^/]+)/([^@]+)(?:@(.+))?", purl)
         if not match:
@@ -96,7 +98,7 @@ class NVDClient(BaseClient):
         # This is a simplified example - real implementation would need
         # a comprehensive mapping database
         cpe_mappings = {
-            ("npm", "express"): "cpe:2.3:a:expressjs:express",
+            ("npm", "express"): "cpe:2.3:a:openjsf:express",
             ("npm", "lodash"): "cpe:2.3:a:lodash:lodash",
             ("pypi", "django"): "cpe:2.3:a:djangoproject:django",
             ("pypi", "flask"): "cpe:2.3:a:palletsprojects:flask",

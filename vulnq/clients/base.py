@@ -114,8 +114,17 @@ class BaseClient(ABC):
 
                     async with self.session.request(method, url, **kwargs) as response:
                         # Check for rate limiting
-                        if response.status == 429:
-                            retry_after = response.headers.get("Retry-After", "60")
+                        # GitHub signals its primary rate limit with 403 and
+                        # a remaining-count of zero, not 429, so a 429-only
+                        # check leaves the common case in the generic branch.
+                        rate_limited = response.status == 429 or (
+                            response.status == 403
+                            and response.headers.get("X-RateLimit-Remaining") == "0"
+                        )
+                        if rate_limited:
+                            retry_after = response.headers.get(
+                                "Retry-After", response.headers.get("X-RateLimit-Reset", "60")
+                            )
                             raise RateLimitError(
                                 f"Rate limit exceeded. Retry after {retry_after} seconds"
                             )

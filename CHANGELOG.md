@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all. It now means "this source ran and returned an answer"
 - The `RateLimitError` branch in the query engine was unreachable, because no
   client ever let one escape. Hitting a rate limit read as a clean scan
+- The GitHub client returned an empty list for an unparseable identifier and
+  for any ecosystem outside its mapping table, and was then counted as checked.
+  Because an unrecognised identifier defaults to PURL, a bare typo such as
+  `vulnq express` reported a clean scan and exited 0
+- The GitHub ecosystem table was missing `golang`, the official Go PURL type,
+  along with Hex, Pub, Swift and GitHub Actions. Every Go query was answered
+  with nothing
+- The NVD PURL-to-CPE table mapped npm `express` to `expressjs:express`, a
+  vendor NVD does not index. NVD accepted it and returned zero results, hiding
+  three real CVEs behind a conclusive-looking clean scan. The correct vendor is
+  `openjsf`, verified against live NVD data
+- GitHub reports GraphQL failures, including rate limiting, as HTTP 200 with an
+  `errors` array and no data. That parsed as a package with no advisories
+- GitHub's primary rate limit uses HTTP 403, not 429, so it was never
+  recognised as a rate limit
+- A response whose records are all unparseable now raises rather than reporting
+  zero findings; parsing none of N is a shape change, not a clean package
+- Markdown output carried none of the new caveats, so a saved report of an
+  inconclusive query read as clean for as long as the file existed
 
 ### Added
 - `sources_skipped` on `QueryResult`, mapping a source to why it could not be
@@ -22,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and VulnerableCode take PURLs but not CPEs; NVD takes CPEs and only the PURLs
   it can convert — previously returned an empty list and was counted as checked
 - `QueryResult.is_conclusive`, true when at least one source ran. An empty
-  result is only meaningful when it is true
+  result is only meaningful when it is true. Serialized into the JSON envelope
+  so a subprocess consumer does not have to derive it
 - `UnsupportedQueryError`, raised by a client that cannot be asked a given
   identifier, as distinct from one that was asked and failed
 

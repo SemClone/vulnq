@@ -5,7 +5,26 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient, UnsupportedQueryError
+from .base import BaseClient, RateLimitError, UnsupportedQueryError
+
+# PURL type to GitHub SecurityAdvisoryEcosystem. Both spellings of the Go purl
+# type are mapped: "golang" is the official one, and only "go" was handled
+# before, so every Go query was silently answered with nothing.
+ECOSYSTEM_MAP = {
+    "npm": "NPM",
+    "pypi": "PIP",
+    "maven": "MAVEN",
+    "gem": "RUBYGEMS",
+    "nuget": "NUGET",
+    "cargo": "RUST",
+    "composer": "COMPOSER",
+    "go": "GO",
+    "golang": "GO",
+    "hex": "ERLANG",
+    "pub": "PUB",
+    "swift": "SWIFT",
+    "githubactions": "ACTIONS",
+}
 
 
 class GitHubClient(BaseClient):
@@ -40,23 +59,16 @@ class GitHubClient(BaseClient):
         # Parse PURL to extract ecosystem and name
         ecosystem, name, version = self._parse_purl(purl)
         if not ecosystem or not name:
-            return []
+            # Unparseable input was never asked about. utils defaults an
+            # unrecognised identifier to PURL, so a bare typo like "express"
+            # lands here - and must not come back as a clean scan.
+            raise UnsupportedQueryError(f"Not a parseable Package URL: {purl}")
 
-        # Map PURL type to GitHub ecosystem
-        ecosystem_map = {
-            "npm": "NPM",
-            "pypi": "PIP",
-            "maven": "MAVEN",
-            "gem": "RUBYGEMS",
-            "nuget": "NUGET",
-            "cargo": "RUST",
-            "composer": "COMPOSER",
-            "go": "GO",
-        }
-
-        gh_ecosystem = ecosystem_map.get(ecosystem.lower())
+        gh_ecosystem = ECOSYSTEM_MAP.get(ecosystem.lower())
         if not gh_ecosystem:
-            return []
+            raise UnsupportedQueryError(
+                f"GitHub Advisory Database has no ecosystem mapping for '{ecosystem}'"
+            )
 
         # Build GraphQL query
         query = """
@@ -150,10 +162,26 @@ class GitHubClient(BaseClient):
         Returns:
             List of Vulnerability objects
         """
-        vulnerabilities = []
+        # GraphQL reports failures - including rate limiting - as HTTP 200 with
+        # an errors array and, when the request failed before execution, no
+        # data at all. Treating that as an empty answer was a clean scan out of
+        # a refused request.
+        errors = response.get("errors")
+        if errors:
+            messages = "; ".join(
+                str(error.get("message") or error.get("type") or error)
+                for error in errors
+                if isinstance(error, dict)
+            ) or str(errors)
+            if "RATE_LIMITED" in str(errors) or "rate limit" in messages.lower():
+                raise RateLimitError(messages)
+            raise RuntimeError(f"GitHub GraphQL error: {messages}")
 
-        data = response.get("data", {})
-        vulns = data.get("securityVulnerabilities", {}).get("nodes", [])
+        if "data" not in response or response.get("data") is None:
+            raise RuntimeError("GitHub GraphQL response contained no data")
+
+        vulnerabilities = []
+        vulns = response["data"].get("securityVulnerabilities", {}).get("nodes", [])
 
         for vuln_data in vulns:
             try:
@@ -164,6 +192,11 @@ class GitHubClient(BaseClient):
                 if self.verbose:
                     print(f"Error parsing GitHub vulnerability: {e}")
                 continue
+
+        # Every record present but none usable means the response shape changed,
+        # not that the package is clean.
+        if vulns and not vulnerabilities:
+            raise RuntimeError(f"GitHub returned {len(vulns)} advisories but none could be parsed")
 
         return vulnerabilities
 

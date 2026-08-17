@@ -61,8 +61,9 @@ class OSVClient(BaseClient):
             List of Vulnerability objects
         """
         vulnerabilities = []
+        vulns = response.get("vulns", [])
 
-        for vuln_data in response.get("vulns", []):
+        for vuln_data in vulns:
             try:
                 vuln = self._parse_vulnerability(vuln_data)
                 if vuln:
@@ -71,6 +72,11 @@ class OSVClient(BaseClient):
                 if self.verbose:
                     print(f"Error parsing OSV vulnerability: {e}")
                 continue
+
+        # Every record present but none usable means the response shape
+        # changed, not that the package is clean.
+        if vulns and not vulnerabilities:
+            raise RuntimeError(f"OSV returned {len(vulns)} records but none could be parsed")
 
         return vulnerabilities
 

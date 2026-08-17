@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class Severity(str, Enum):
@@ -144,6 +144,7 @@ class QueryResult(BaseModel):
         """Get total vulnerability count."""
         return len(self.vulnerabilities)
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_conclusive(self) -> bool:
         """Whether any source actually ran and answered.
