@@ -290,25 +290,6 @@ class GitHubClient(BaseClient):
 
         return response["data"].get("securityVulnerabilities") or {}
 
-    def _parse_response(
-        self,
-        response: Dict[str, Any],
-        target_version: Optional[str],
-        ecosystem: Optional[str] = None,
-    ) -> List[Vulnerability]:
-        """Parse a single-page GitHub GraphQL response.
-
-        Args:
-            response: Raw API response
-            target_version: Specific version to check (optional)
-            ecosystem: PURL type, used to order versions correctly
-
-        Returns:
-            List of Vulnerability objects
-        """
-        connection = self._connection(response)
-        return self._parse_nodes(connection.get("nodes") or [], target_version, ecosystem)
-
     def _parse_nodes(
         self,
         vulns: List[Dict[str, Any]],

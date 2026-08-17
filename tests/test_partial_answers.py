@@ -353,3 +353,61 @@ class TestGitHubPagination:
 
         assert len(calls) == 1
         assert len(result.vulnerabilities) == 1
+
+
+class TestUpstreamTruncationIsReported:
+    """A source that returns a page of a larger answer must say so."""
+
+    def test_osv_follows_page_tokens(self, monkeypatch, offline):
+        pages = [
+            {"vulns": [{"id": "OSV-1", "summary": "a"}], "next_page_token": "t1"},
+            {"vulns": [{"id": "OSV-2", "summary": "b"}]},
+        ]
+        tokens = []
+
+        async def paged(self, method, url, **kwargs):
+            tokens.append(kwargs["json"].get("page_token"))
+            return pages[len(tokens) - 1]
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", paged)
+        result = engine(VulnerabilitySource.OSV).query(PURL)
+
+        assert len(result.vulnerabilities) == 2
+        assert tokens == [None, "t1"]
+        assert result.warnings == []
+
+    def test_osv_page_cap_is_reported(self, monkeypatch, offline):
+        async def endless(self, method, url, **kwargs):
+            return {"vulns": [{"id": "OSV-1", "summary": "a"}], "next_page_token": "more"}
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", endless)
+        result = engine(VulnerabilitySource.OSV).query(PURL)
+
+        assert len(result.warnings) == 1
+        assert "page limit" in result.warnings[0]
+
+    def test_nvd_reports_a_truncated_page(self, monkeypatch, offline):
+        """100 of 6332 must not be presented as the whole answer."""
+
+        async def truncated(self, method, url, **kwargs):
+            return {
+                "totalResults": 6332,
+                "vulnerabilities": [{"cve": {"id": "CVE-2020-0001", "descriptions": []}}],
+            }
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", truncated)
+        result = engine(VulnerabilitySource.NVD).query(PURL)
+
+        assert len(result.vulnerabilities) == 1
+        assert len(result.warnings) == 1
+        assert "of 6332" in result.warnings[0]
+
+    def test_nvd_complete_page_carries_no_warning(self, monkeypatch, offline):
+        async def complete(self, method, url, **kwargs):
+            return {
+                "totalResults": 1,
+                "vulnerabilities": [{"cve": {"id": "CVE-2020-0001", "descriptions": []}}],
+            }
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", complete)
+        assert engine(VulnerabilitySource.NVD).query(PURL).warnings == []

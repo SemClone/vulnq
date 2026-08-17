@@ -43,8 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped from two advisories it is affected by. Gem now has its own ordering
 - Build metadata was discarded as semver requires, but several ecosystems
   carry meaning in it: `11.0.6+security-01` is the *patched* build of 11.0.6
-  and was reported as a confirmed match for `<= 11.0.6`. Versions carrying
-  build metadata are now undecidable rather than assumed equivalent
+  and was reported as a confirmed match for `<= 11.0.6`. Build metadata is now
+  undecidable when it is the only thing left to order by. It still cannot
+  overturn a difference in the release numbers, and Go's `+incompatible` — a
+  module-path marker Go's own ordering ignores — is not treated as metadata
+- OSV stopped at the first page of results and dropped its `next_page_token`,
+  so a package with thousands of records reported the first 3000 as the whole
+  answer. Pages are now followed
+- NVD reported the first 100 records of a larger result with nothing said
+  about it: a kernel CPE returned 100 of 6332 as a complete answer. NVD's rate
+  limits make paging a query of that size impractical, so the shortfall is
+  reported as an incomplete answer instead
 
 ### Added
 - `Vulnerability.version_match`, recording whether the queried version was

@@ -8,6 +8,11 @@ from packageurl import PackageURL
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
+# Pages to fetch before giving up. OSV returns up to 1000 records per page and
+# hands back a token for the rest; ignoring it reported 3000 of an unknown
+# larger total as if that were the whole answer.
+MAX_PAGES = 10
+
 
 class OSVClient(BaseClient):
     """Client for OSV.dev vulnerability database."""
@@ -34,13 +39,32 @@ class OSVClient(BaseClient):
         self._begin_query()
 
         url = f"{self.base_url}/query"
-        data = {"package": {"purl": purl}}
+        vulns: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
 
-        # Failures propagate: the caller records them as errors and omits the
-        # source from sources_checked. Swallowing them here made an outage
-        # indistinguishable from a package with no known vulnerabilities.
-        response = await self._make_request("POST", url, json=data)
-        return self._parse_response(response, self._queried_version(purl))
+        for _ in range(MAX_PAGES):
+            data: Dict[str, Any] = {"package": {"purl": purl}}
+            if page_token:
+                data["page_token"] = page_token
+
+            # Failures propagate: the caller records them as errors and omits
+            # the source from sources_checked. Swallowing them here made an
+            # outage indistinguishable from a package with no known
+            # vulnerabilities.
+            response = await self._make_request("POST", url, json=data)
+            vulns.extend(response.get("vulns") or [])
+
+            page_token = response.get("next_page_token")
+            if not page_token:
+                break
+        else:
+            # Stopping short must not pass for having read everything.
+            self.parse_warnings.append(
+                f"osv returned more than {len(vulns)} records for {purl} and the rest were "
+                f"not fetched (page limit of {MAX_PAGES} reached)"
+            )
+
+        return self._parse_vulns(vulns, self._queried_version(purl))
 
     @staticmethod
     def _queried_version(purl: str) -> Optional[str]:
@@ -78,7 +102,7 @@ class OSVClient(BaseClient):
     def _parse_response(
         self, response: Dict[str, Any], queried_version: Optional[str] = None
     ) -> List[Vulnerability]:
-        """Parse OSV API response into Vulnerability objects.
+        """Parse a single-page OSV API response.
 
         Args:
             response: Raw API response
@@ -87,8 +111,24 @@ class OSVClient(BaseClient):
         Returns:
             List of Vulnerability objects
         """
+        return self._parse_vulns(response.get("vulns") or [], queried_version)
+
+    def _parse_vulns(
+        self, vulns: List[Dict[str, Any]], queried_version: Optional[str] = None
+    ) -> List[Vulnerability]:
+        """Turn OSV records into Vulnerability objects.
+
+        Args:
+            vulns: Records, possibly gathered across several pages
+            queried_version: Version pinned by the query, if any
+
+        Returns:
+            List of Vulnerability objects
+
+        Raises:
+            RuntimeError: If records were returned and none could be parsed
+        """
         vulnerabilities = []
-        vulns = response.get("vulns", [])
         parse_failures = 0
         last_error = ""
 

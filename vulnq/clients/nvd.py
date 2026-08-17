@@ -76,6 +76,18 @@ class NVDClient(BaseClient):
         response = await self._make_request(
             "GET", self.base_url, params=params, headers=self._get_headers()
         )
+        # NVD caps a page at 100 and rate-limits hard enough that paging a
+        # 6000-result CPE is not viable inside one query. Reporting the
+        # shortfall is: 100 of 6332 presented as a whole answer is the same
+        # false-complete result this client exists to avoid.
+        total = response.get("totalResults")
+        returned = len(response.get("vulnerabilities") or [])
+        if isinstance(total, int) and total > returned:
+            self.parse_warnings.append(
+                f"nvd returned only {returned} of {total} records for {cpe}; the rest were "
+                "not fetched. Narrow the CPE to see them"
+            )
+
         return self._parse_response(response, self._cpe_version(cpe))
 
     @staticmethod

@@ -51,6 +51,11 @@ _MAVEN_QUALIFIER_RANK = {
 }
 _MAVEN_UNKNOWN_QUALIFIER_RANK = 8
 
+# Maven only reads these as alpha/beta/milestone when a digit follows them.
+_MAVEN_SHORT_ALIASES = {"a", "b", "m"}
+
+_INCOMPATIBLE_RE = re.compile(r"\+incompatible$", re.IGNORECASE)
+
 _CONSTRAINT_RE = re.compile(r"^\s*(<=|>=|==|=|<|>)?\s*(\S.*?)\s*$")
 
 # A leading dotted-numeric run, then whatever qualifier follows it.
@@ -160,20 +165,30 @@ def _compare_semver(left: str, right: str) -> int:
     Raises:
         UnparseableVersion: If either version cannot be ordered
     """
-    # Semver says build metadata never affects precedence, but several
-    # ecosystems carry meaning in it - "11.0.6+security-01" is the *patched*
-    # build of 11.0.6, and ignoring the suffix reported it as a confirmed
-    # match for "<= 11.0.6". Undecided is honest; the caller reports it as
-    # unconfirmed rather than dropping it.
-    if "+" in left or "+" in right:
-        raise UnparseableVersion(f"build metadata is not orderable: {left} vs {right}")
+    # "+incompatible" is not build metadata in the semver sense: Go's module
+    # system appends it to any pre-modules major above v1, and Go's own semver
+    # package ignores it. Treating it as opaque left every such version
+    # unconfirmed, and a large share of real Go SBOM entries carry it.
+    left = _INCOMPATIBLE_RE.sub("", left)
+    right = _INCOMPATIBLE_RE.sub("", right)
 
-    left_release, left_qualifier = _split_release(_strip_v_prefix(left))
-    right_release, right_qualifier = _split_release(_strip_v_prefix(right))
+    has_metadata = "+" in left or "+" in right
+    left_release, left_qualifier = _split_release(_strip_v_prefix(left).split("+")[0])
+    right_release, right_qualifier = _split_release(_strip_v_prefix(right).split("+")[0])
 
     left_release, right_release = _pad(left_release, right_release)
     if left_release != right_release:
+        # Build metadata cannot overturn a difference in the release numbers,
+        # so Go's ubiquitous "+incompatible" still gets a real answer here.
         return -1 if left_release < right_release else 1
+
+    # Once the numbers tie, the suffix is the only thing left to order by, and
+    # semver says to ignore it while Grafana and pub do not:
+    # "11.0.6+security-01" is the *patched* build of 11.0.6, and discarding
+    # the suffix reported it as a confirmed match for "<= 11.0.6". Undecided
+    # is honest; the caller reports it as unconfirmed rather than dropping it.
+    if has_metadata:
+        raise UnparseableVersion(f"build metadata is not orderable: {left} vs {right}")
 
     if not left_qualifier and not right_qualifier:
         return 0
@@ -208,6 +223,13 @@ def _maven_qualifier_key(qualifier: str) -> Tuple[int, int]:
         raise UnparseableVersion(qualifier)
 
     word, number = match.group(1), match.group(2)
+
+    # Maven reads "a", "b" and "m" as alpha/beta/milestone only when a digit
+    # follows. Bare, they are ordinary unknown qualifiers, which this table
+    # cannot rank - so treat them as undecidable rather than as aliases.
+    if word in _MAVEN_SHORT_ALIASES and not number:
+        raise UnparseableVersion(qualifier)
+
     rank = _MAVEN_QUALIFIER_RANK.get(word)
     if rank is None:
         # An unrecognised word is undecidable rather than "ranks last". The
@@ -265,8 +287,12 @@ def _gem_segments(version: str) -> List[Any]:
     Raises:
         UnparseableVersion: If the version contains no segments
     """
+    # Gem::Version rewrites a dash to ".pre." before segmenting, so "2.2.3-1"
+    # is a pre-release *below* 2.2.3 rather than something above it. Skipping
+    # this step ordered dash versions the opposite way and silently excluded
+    # advisories that applied.
     segments: List[Any] = []
-    for token in re.findall(r"\d+|[A-Za-z]+", version):
+    for token in re.findall(r"\d+|[A-Za-z]+", version.replace("-", ".pre.")):
         segments.append(int(token) if token.isdigit() else token.lower())
     if not segments:
         raise UnparseableVersion(version)

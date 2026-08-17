@@ -213,3 +213,80 @@ class TestUnrankableQualifiersAreUndecided:
 
     def test_an_identical_odd_qualifier_still_compares_equal(self):
         assert compare_versions("maven", "2024.Q1.2", "2024.Q1.2") == 0
+
+
+class TestGemDashVersions:
+    """Gem::Version rewrites "-" to ".pre.", making a dash version a pre-release.
+
+    Ordering "2.2.3-1" above 2.2.3 instead of below it silently excluded three
+    advisories from a live rack query.
+    """
+
+    @pytest.mark.parametrize(
+        "left,right,expected",
+        [
+            ("2.2.3-1", "2.2.3", -1),
+            ("2.2.3-1", "2.2.3.0", -1),
+            ("2.2.3-1", "2.2.2", 1),
+            ("1.0-1", "1.0", -1),
+            ("1.0.0-beta", "1.0.0", -1),
+            # Gem treats these two spellings as the same version.
+            ("1.0.0.beta.1", "1.0.0.beta1", 0),
+        ],
+    )
+    def test_matches_ruby_gem_version(self, left, right, expected):
+        assert compare_versions("gem", left, right) == expected
+
+    def test_the_rack_ranges_that_were_excluded(self):
+        assert evaluate_range("gem", "2.2.3-1", ">= 2.2, <= 2.2.3.0") is True
+        assert evaluate_range("gem", "2.2.3-1", ">= 2.2.0, < 2.2.3") is True
+
+
+class TestBuildMetadataOnlyBlocksTies:
+    """Build metadata cannot overturn a difference in the release numbers.
+
+    Refusing every comparison involving "+" made Go's ubiquitous
+    "+incompatible" unconfirmed even when the major versions settled it.
+    """
+
+    def test_differing_releases_still_decide(self):
+        assert evaluate_range("golang", "3.2.0+incompatible", "< 4.0.0-preview1") is True
+        assert evaluate_range("golang", "1.0.0+build", "< 2.0.0") is True
+        assert evaluate_range("golang", "5.0.0+build", "< 2.0.0") is False
+
+    def test_a_tie_is_still_undecided(self):
+        assert evaluate_range("golang", "11.0.6+security-01", ">= 11.0.0, <= 11.0.6") is None
+        assert compare_versions("npm", "1.0.0+build1", "1.0.0+build2") is None
+
+
+class TestMavenShortAliases:
+    """Maven reads "a"/"b"/"m" as alpha/beta/milestone only before a digit."""
+
+    def test_bare_letters_are_undecided(self):
+        assert compare_versions("maven", "12", "12m") is None
+        assert compare_versions("maven", "1.0-a", "1.0-alpha1") is None
+
+    def test_letters_with_a_digit_still_rank(self):
+        assert compare_versions("maven", "1.0-b2", "1.0-b3") == -1
+        assert compare_versions("maven", "1.0-a1", "1.0-b1") == -1
+        assert evaluate_range("maven", "2.14.1", ">= 2.0-beta9, < 2.25.3") is True
+
+
+class TestGoIncompatibleSuffix:
+    """ "+incompatible" is a Go module-path marker, not semantic metadata.
+
+    Go's own semver package ignores it, and a large share of real Go SBOM
+    entries carry it, so treating it as opaque left them all unconfirmed.
+    """
+
+    def test_it_is_ignored_for_ordering(self):
+        assert compare_versions("golang", "3.2.0+incompatible", "3.2.0") == 0
+        assert compare_versions("golang", "3.2.0+incompatible", "3.1.0") == 1
+
+    def test_the_live_jwt_go_advisory_resolves(self):
+        span = ">= 0.0.0-20150717181359-44718f8a89b0, <= 3.2.0"
+        assert evaluate_range("golang", "3.2.0+incompatible", span) is True
+        assert evaluate_range("golang", "4.0.0+incompatible", span) is False
+
+    def test_other_build_metadata_is_still_undecided(self):
+        assert compare_versions("golang", "11.0.6+security-01", "11.0.6") is None
