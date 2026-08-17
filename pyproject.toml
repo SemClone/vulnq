@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vulnq"
-version = "1.0.2"
+version = "1.1.0"
 description = "Lightweight vulnerability query tool for multi-source security data aggregation"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -87,9 +87,10 @@ Changelog = "https://github.com/SemClone/vulnq/blob/main/CHANGELOG.md"
 
 [project.scripts]
 vulnq = "vulnq.cli:main"
+vulnq-mine = "vulnq.mine_cli:main"
 
 [tool.setuptools]
-packages = ["vulnq"]
+packages = ["vulnq", "vulnq.clients", "vulnq.enrichment"]
 
 [tool.setuptools.package-data]
 vulnq = ["py.typed"]

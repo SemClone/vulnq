@@ -10,7 +10,7 @@ from rich.text import Text
 
 from . import __version__
 from .core import VulnerabilityQuery
-from .models import Configuration, QueryResult, Severity
+from .models import QueryResult, Severity
 
 console = Console()
 
@@ -19,9 +19,18 @@ def print_table(result: QueryResult, show_fixes: bool = False):
     """Print results in table format."""
     table = Table(title=f"Vulnerabilities for {result.query}")
 
+    # Only widen the table when a snapshot was actually joined, so output is
+    # unchanged for callers running without enrichment configured.
+    show_kev = "cisa-kev" in result.enrichment
+    show_epss = "first-epss" in result.enrichment
+
     table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Severity", style="bold")
     table.add_column("CVSS", justify="right")
+    if show_kev:
+        table.add_column("KEV", justify="center")
+    if show_epss:
+        table.add_column("EPSS", justify="right")
     table.add_column("Summary", style="dim", overflow="fold")
     if show_fixes:
         table.add_column("Fixed In", style="green")
@@ -39,8 +48,21 @@ def print_table(result: QueryResult, show_fixes: bool = False):
             vuln.id,
             Text(vuln.severity.value, style=severity_style),
             str(vuln.cvss_score) if vuln.cvss_score else "-",
-            vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary,
         ]
+
+        if show_kev:
+            # "?" is not "no" - an unknown join must not read as safe.
+            if vuln.known_exploited is None:
+                row.append(Text("?", style="dim"))
+            elif vuln.known_exploited:
+                row.append(Text("YES", style="bold red"))
+            else:
+                row.append(Text("no", style="dim"))
+
+        if show_epss:
+            row.append(f"{vuln.epss_score:.3f}" if vuln.epss_score is not None else "?")
+
+        row.append(vuln.summary[:100] + "..." if len(vuln.summary) > 100 else vuln.summary)
 
         if show_fixes:
             fixes = ", ".join(vuln.fixed_versions[:3])
@@ -56,6 +78,22 @@ def print_table(result: QueryResult, show_fixes: bool = False):
     summary = f"Found {result.vulnerability_count} vulnerabilities: "
     summary += f"{result.critical_count} critical, {result.high_count} high"
     console.print(f"\n[bold]{summary}[/bold]")
+
+    for provenance in result.enrichment.values():
+        if not provenance.available:
+            console.print(
+                f"[yellow]{provenance.source}: unavailable[/yellow] "
+                f"({provenance.error}) - exploitability left unknown"
+            )
+            continue
+
+        age = ""
+        if provenance.age_seconds is not None:
+            age = f", {provenance.age_seconds / 86400:.1f}d old"
+        state = " [yellow](stale, not joined)[/yellow]" if provenance.stale else ""
+        console.print(
+            f"[dim]{provenance.source}: {provenance.version or 'unknown'}{age}[/dim]{state}"
+        )
 
     if result.errors:
         console.print("\n[yellow]Warnings:[/yellow]")
@@ -123,6 +161,22 @@ def print_markdown(result: QueryResult):
 @click.option("--sources", multiple=True, help="Vulnerability sources to check (osv, github, nvd)")
 @click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
 @click.option("--no-cache", is_flag=True, help="Disable caching")
+@click.option(
+    "--kev-snapshot",
+    envvar="VULNQ_KEV_SNAPSHOT",
+    help="CISA KEV snapshot path, directory, or URL",
+)
+@click.option(
+    "--epss-snapshot",
+    envvar="VULNQ_EPSS_SNAPSHOT",
+    help="FIRST EPSS snapshot path, directory, or URL",
+)
+@click.option(
+    "--snapshot-max-age-days",
+    type=int,
+    envvar="VULNQ_SNAPSHOT_MAX_AGE_DAYS",
+    help="Refuse snapshots older than this instead of joining against them",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.version_option(version=__version__)
 def main(
@@ -138,6 +192,9 @@ def main(
     sources: tuple,
     use_vulnerablecode: bool,
     no_cache: bool,
+    kev_snapshot: Optional[str],
+    epss_snapshot: Optional[str],
+    snapshot_max_age_days: Optional[int],
     verbose: bool,
 ):
     """vulnq - Vulnerability Query Tool
@@ -179,8 +236,18 @@ def main(
         console.print("Run 'vulnq --help' for usage information")
         sys.exit(1)
 
-    # Configure
-    config = Configuration(cache_enabled=not no_cache, use_vulnerablecode=use_vulnerablecode)
+    # Start from the environment so API keys and snapshot locations reach a
+    # subprocess caller, then let explicit flags override.
+    config = VulnerabilityQuery.load_config()
+    config.cache_enabled = not no_cache
+    if use_vulnerablecode:
+        config.use_vulnerablecode = True
+    if kev_snapshot:
+        config.kev_snapshot = kev_snapshot
+    if epss_snapshot:
+        config.epss_snapshot = epss_snapshot
+    if snapshot_max_age_days is not None:
+        config.snapshot_max_age_days = snapshot_max_age_days
     if sources:
         from .models import VulnerabilitySource
 
