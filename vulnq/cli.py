@@ -79,6 +79,16 @@ def print_table(result: QueryResult, show_fixes: bool = False):
     summary += f"{result.critical_count} critical, {result.high_count} high"
     console.print(f"\n[bold]{summary}[/bold]")
 
+    if not result.is_conclusive:
+        # Zero findings from zero sources is not a clean scan.
+        console.print(
+            "[bold red]No source answered this query.[/bold red] "
+            "Zero results here means nobody looked, not that nothing was found."
+        )
+
+    for source, reason in result.sources_skipped.items():
+        console.print(f"[yellow]{source} skipped:[/yellow] {reason}")
+
     for provenance in result.enrichment.values():
         if not provenance.available:
             console.print(
@@ -124,6 +134,26 @@ def print_markdown(result: QueryResult):
         else:
             md += f"- **{provenance.source}:** unavailable, exploitability unknown\n"
     if result.enrichment:
+        md += "\n"
+
+    # A saved report must carry the same caveats as the terminal output, or an
+    # inconclusive query reads as a clean scan for as long as the file exists.
+    if not result.is_conclusive:
+        md += (
+            "> **No source answered this query.** Zero results here means nobody "
+            "looked, not that nothing was found.\n\n"
+        )
+
+    if result.sources_skipped:
+        md += "### Sources Skipped\n\n"
+        for source, reason in result.sources_skipped.items():
+            md += f"- **{source}:** {reason}\n"
+        md += "\n"
+
+    if result.errors:
+        md += "### Errors\n\n"
+        for error in result.errors:
+            md += f"- {error}\n"
         md += "\n"
 
     if result.vulnerabilities:
@@ -303,12 +333,14 @@ def main(
         sys.exit(2)
 
     # Process queries
+    inconclusive = False
     for query_str in queries:
         if verbose:
             console.print(f"[dim]Querying: {query_str}[/dim]")
 
         try:
             result = vq.query(query_str)
+            inconclusive = inconclusive or not result.is_conclusive
 
             # Filter by severity if requested
             if min_severity:
@@ -330,6 +362,12 @@ def main(
 
                 console.print(traceback.format_exc())
             sys.exit(1)
+
+    # A script keying on the exit code must not read "no source answered" as a
+    # clean scan. Findings themselves are reported through the output, not the
+    # exit code, so this stays reserved for "the question went unanswered".
+    if inconclusive:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -97,6 +97,29 @@ Every source named in `VulnerabilitySource` has a working client. Requesting a
 source that does not exist fails immediately rather than returning an empty
 result that reads as a clean scan.
 
+### An empty result means "we looked and found nothing"
+
+Not every source can answer every identifier. OSV, GitHub, and VulnerableCode
+are keyed by PURL and have no CPE lookup; NVD is keyed by CPE and can only take
+the PURLs it can convert. A source that cannot be asked, or that fails when
+asked, is never counted as having answered:
+
+- `sources_checked` — ran and returned an answer
+- `sources_skipped` — could not be asked, mapped to why
+- `errors` — was asked and failed, including rate limits
+- `is_conclusive` — true when at least one source ran
+
+```console
+$ vulnq --cpe "2.3:a:apache:tomcat:9.0.0:*:*:*:*:*:*:*"
+Found 100 vulnerabilities: 17 critical, 51 high
+osv skipped: OSV cannot be queried by CPE; use a PURL
+github skipped: GitHub Advisory Database cannot be queried by CPE; use a PURL
+```
+
+If no source answers, the CLI says so and exits 1 — zero findings from zero
+sources is not a clean scan. Findings themselves are reported through the
+output, not the exit code.
+
 ## Supported Identifier Formats
 
 ### Package URLs (PURLs)

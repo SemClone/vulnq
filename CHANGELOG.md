@@ -5,6 +5,65 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-17
+
+### Fixed
+- Client exceptions were swallowed and turned into an empty list, so a network
+  failure, an HTTP error, or a rate limit was indistinguishable from a package
+  with no known vulnerabilities. They now propagate and are reported
+- `sources_checked` listed sources that had failed or could not be queried at
+  all. It now means "this source ran and returned an answer"
+- The `RateLimitError` branch in the query engine was unreachable, because no
+  client ever let one escape. Hitting a rate limit read as a clean scan
+- The GitHub client returned an empty list for an unparseable identifier and
+  for any ecosystem outside its mapping table, and was then counted as checked.
+  Because an unrecognised identifier defaults to PURL, a bare typo such as
+  `vulnq express` reported a clean scan and exited 0
+- The GitHub ecosystem table was missing `golang`, the official Go PURL type,
+  along with Hex, Pub, Swift and GitHub Actions. Every Go query was answered
+  with nothing
+- The NVD PURL-to-CPE table mapped npm `express` to `expressjs:express`, a
+  vendor NVD does not index. NVD accepted it and returned zero results, hiding
+  three real CVEs behind a conclusive-looking clean scan. The correct vendor is
+  `openjsf`, verified against live NVD data
+- GitHub reports GraphQL failures, including rate limiting, as HTTP 200 with an
+  `errors` array and no data. That parsed as a package with no advisories
+- GitHub's primary rate limit uses HTTP 403, not 429, so it was never
+  recognised as a rate limit
+- A response whose records are all unparseable now raises rather than reporting
+  zero findings; parsing none of N is a shape change, not a clean package
+- Markdown output carried none of the new caveats, so a saved report of an
+  inconclusive query read as clean for as long as the file existed
+- Merging a CVE found by both NVD and another source raised a timezone
+  comparison error that failed the entire query and discarded every finding
+  from every source. NVD publishes timestamps without an offset and the others
+  publish them with one. This surfaced only once the npm `express` mapping was
+  corrected, because that was the first time real NVD results reached the merge
+- A GitHub advisory node missing its advisory or id is now counted as a parse
+  failure rather than skipped; only a record that does not apply to the queried
+  version yields nothing without being counted
+- A rate-limit message reported `X-RateLimit-Reset`, an epoch timestamp, as a
+  delay in seconds, and the corrected message was then discarded by the caller
+  in favour of a bare label. The reset time now reaches `errors`
+- Merged records stored one source's naive timestamp beside another's
+  offset-aware one; published dates are now normalized on assignment
+
+### Added
+- `sources_skipped` on `QueryResult`, mapping a source to why it could not be
+  asked. A source that structurally cannot answer an identifier — OSV, GitHub
+  and VulnerableCode take PURLs but not CPEs; NVD takes CPEs and only the PURLs
+  it can convert — previously returned an empty list and was counted as checked
+- `QueryResult.is_conclusive`, true when at least one source ran. An empty
+  result is only meaningful when it is true. Serialized into the JSON envelope
+  so a subprocess consumer does not have to derive it
+- `UnsupportedQueryError`, raised by a client that cannot be asked a given
+  identifier, as distinct from one that was asked and failed
+
+### Changed
+- The CLI exits 1 when no source answered a query, and says so in the output.
+  Findings themselves are still reported through the output rather than the
+  exit code; this is reserved for a question that went unanswered
+
 ## [1.2.0] - 2026-08-17
 
 ### Removed - BREAKING

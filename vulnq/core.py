@@ -3,10 +3,17 @@
 import asyncio
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from .clients import GitHubClient, NVDClient, OSVClient, RateLimitError, VulnerableCodeClient
+from .clients import (
+    GitHubClient,
+    NVDClient,
+    OSVClient,
+    RateLimitError,
+    UnsupportedQueryError,
+    VulnerableCodeClient,
+)
 from .enrichment import Enricher, build_enricher
 from .models import (
     Configuration,
@@ -27,6 +34,22 @@ FANOUT_SOURCES = (
     VulnerabilitySource.GITHUB,
     VulnerabilitySource.NVD,
 )
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Return a timezone-aware datetime, assuming UTC when none is given.
+
+    Sources disagree about offsets: NVD publishes naive timestamps, OSV and
+    GitHub publish them with a Z. Comparing the two raises, so anything that
+    orders dates across sources has to normalize first.
+
+    Args:
+        value: A naive or aware datetime
+
+    Returns:
+        The same instant, timezone-aware
+    """
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _unsupported_identifier_error(id_type: IdentifierType) -> str:
@@ -205,6 +228,15 @@ class VulnerabilityQuery:
             )
             result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
 
+        # Sources disagree about offsets, so without this one envelope can
+        # carry NVD's naive timestamps beside OSV's offset-aware ones and a
+        # consumer has to handle both shapes.
+        for vuln in result.vulnerabilities:
+            if vuln.published_date:
+                vuln.published_date = _as_utc(vuln.published_date)
+            if vuln.modified_date:
+                vuln.modified_date = _as_utc(vuln.modified_date)
+
         # Enrich after both branches converge, so a CVE found by three sources
         # is stamped once and the VulnerableCode-only path is not skipped.
         if self._enricher:
@@ -258,8 +290,13 @@ class VulnerabilityQuery:
             result.vulnerabilities = vulnerabilities
             result.sources_checked.append(VulnerabilitySource.VULNERABLECODE)
 
+        except UnsupportedQueryError as e:
+            # Cannot be asked, as opposed to asked and broken.
+            result.sources_skipped[VulnerabilitySource.VULNERABLECODE.value] = str(e)
+        except RateLimitError as e:
+            result.errors.append(f"vulnerablecode: {e}")
         except Exception as e:
-            result.errors.append(f"VulnerableCode: {str(e)}")
+            result.errors.append(f"vulnerablecode: {str(e)}")
             if self.verbose:
                 print(f"VulnerableCode error: {e}")
         finally:
@@ -323,13 +360,19 @@ class VulnerabilityQuery:
             source = source_map[id(task)]
 
             if isinstance(task_result, Exception):
-                if isinstance(task_result, RateLimitError):
-                    result.errors.append(f"{source.value}: Rate limit exceeded")
+                if isinstance(task_result, UnsupportedQueryError):
+                    # Nothing went wrong; this source simply cannot be asked
+                    # this question. Kept out of errors so a genuine failure
+                    # stays visible among them.
+                    result.sources_skipped[source.value] = str(task_result)
+                elif isinstance(task_result, RateLimitError):
+                    # Keep the message: it carries when the limit resets.
+                    result.errors.append(f"{source.value}: {task_result}")
                 else:
                     result.errors.append(f"{source.value}: {str(task_result)}")
 
                 if self.verbose:
-                    print(f"Error from {source.value}: {task_result}")
+                    print(f"{source.value} did not answer: {task_result}")
             else:
                 all_vulnerabilities.extend(task_result)
                 result.sources_checked.append(source)
@@ -465,11 +508,17 @@ class VulnerabilityQuery:
                 merged.cvss_score = vuln.cvss_score
                 merged.cvss_vector = vuln.cvss_vector
 
-            # Use earliest published date
+            # Use earliest published date. NVD publishes timestamps without an
+            # offset while OSV and GitHub publish them with one, so comparing
+            # them raw raises the moment a CVE is found by both - which takes
+            # the whole query down, findings from every source included.
             if vuln.published_date and (
-                not merged.published_date or vuln.published_date < merged.published_date
+                not merged.published_date
+                or _as_utc(vuln.published_date) < _as_utc(merged.published_date)
             ):
-                merged.published_date = vuln.published_date
+                # Stored normalized, so a merged record does not present one
+                # source's naive timestamp beside another's offset-aware one.
+                merged.published_date = _as_utc(vuln.published_date)
 
         return merged
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class NVDClient(BaseClient):
@@ -44,9 +44,12 @@ class NVDClient(BaseClient):
         """
         # Try to convert PURL to CPE
         cpe = self._purl_to_cpe(purl)
-        if cpe:
-            return await self.query_cpe(cpe)
-        return []
+        if not cpe:
+            # NVD is CPE-keyed. An ecosystem with no CPE mapping cannot be
+            # asked at all, which is not the same as being asked and coming
+            # back clean.
+            raise UnsupportedQueryError(f"NVD cannot resolve {purl} to a CPE")
+        return await self.query_cpe(cpe)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -63,15 +66,13 @@ class NVDClient(BaseClient):
 
         params = {"cpeName": cpe, "resultsPerPage": 100}
 
-        try:
-            response = await self._make_request(
-                "GET", self.base_url, params=params, headers=self._get_headers()
-            )
-            return self._parse_response(response)
-        except Exception as e:
-            if self.verbose:
-                print(f"NVD query failed for {cpe}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request(
+            "GET", self.base_url, params=params, headers=self._get_headers()
+        )
+        return self._parse_response(response)
 
     def _purl_to_cpe(self, purl: str) -> Optional[str]:
         """Convert PURL to CPE if possible.
@@ -82,8 +83,10 @@ class NVDClient(BaseClient):
         Returns:
             CPE string or None
         """
-        # Simple mapping for common packages
-        # In production, use a comprehensive mapping database
+        # A hardcoded table that returns a *wrong* CPE is worse than one that
+        # returns nothing: NVD accepts the bogus name, answers with zero
+        # results, and the source counts as checked. Every entry below is
+        # verified against live NVD data; add nothing here unverified.
 
         match = re.match(r"pkg:([^/]+)/([^@]+)(?:@(.+))?", purl)
         if not match:
@@ -95,7 +98,7 @@ class NVDClient(BaseClient):
         # This is a simplified example - real implementation would need
         # a comprehensive mapping database
         cpe_mappings = {
-            ("npm", "express"): "cpe:2.3:a:expressjs:express",
+            ("npm", "express"): "cpe:2.3:a:openjsf:express",
             ("npm", "lodash"): "cpe:2.3:a:lodash:lodash",
             ("pypi", "django"): "cpe:2.3:a:djangoproject:django",
             ("pypi", "flask"): "cpe:2.3:a:palletsprojects:flask",

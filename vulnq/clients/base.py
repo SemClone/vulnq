@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,18 @@ from ..models import Severity, Vulnerability, VulnerabilitySource
 
 class RateLimitError(Exception):
     """Raised when API rate limit is exceeded."""
+
+    pass
+
+
+class UnsupportedQueryError(Exception):
+    """Raised when a source structurally cannot answer a given identifier.
+
+    Distinct from a failure: nothing went wrong, the question simply cannot be
+    put to this source. OSV and GitHub take PURLs but not CPEs; NVD takes CPEs
+    and only the PURLs it can convert. Returning an empty list for these made
+    "cannot ask" indistinguishable from "asked, found nothing".
+    """
 
     pass
 
@@ -74,6 +87,36 @@ class BaseClient(ABC):
             await self.session.close()
             self.session = None
 
+    @staticmethod
+    def _retry_hint(headers: Any) -> str:
+        """Describe when a rate-limited request may be retried.
+
+        Retry-After is a delay in seconds, but X-RateLimit-Reset is an epoch
+        timestamp - reporting it as a delay produced advice like "retry after
+        1786958411 seconds".
+
+        Args:
+            headers: Response headers
+
+        Returns:
+            A human-readable retry hint
+        """
+        retry_after = headers.get("Retry-After")
+        if retry_after:
+            return f"Retry after {retry_after} seconds."
+
+        reset = headers.get("X-RateLimit-Reset")
+        if reset:
+            try:
+                seconds = int(float(reset)) - int(time.time())
+            except (TypeError, ValueError, OverflowError):
+                return "Retry later."
+            if seconds > 0:
+                return f"Resets in {seconds} seconds."
+            return "Resets shortly."
+
+        return "Retry later."
+
     async def _make_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
         """Make an HTTP request with retries.
 
@@ -102,10 +145,16 @@ class BaseClient(ABC):
 
                     async with self.session.request(method, url, **kwargs) as response:
                         # Check for rate limiting
-                        if response.status == 429:
-                            retry_after = response.headers.get("Retry-After", "60")
+                        # GitHub signals its primary rate limit with 403 and
+                        # a remaining-count of zero, not 429, so a 429-only
+                        # check leaves the common case in the generic branch.
+                        rate_limited = response.status == 429 or (
+                            response.status == 403
+                            and response.headers.get("X-RateLimit-Remaining") == "0"
+                        )
+                        if rate_limited:
                             raise RateLimitError(
-                                f"Rate limit exceeded. Retry after {retry_after} seconds"
+                                f"Rate limit exceeded. {self._retry_hint(response.headers)}"
                             )
 
                         response.raise_for_status()

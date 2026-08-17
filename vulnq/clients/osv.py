@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class OSVClient(BaseClient):
@@ -32,28 +32,24 @@ class OSVClient(BaseClient):
         url = f"{self.base_url}/query"
         data = {"package": {"purl": purl}}
 
-        try:
-            response = await self._make_request("POST", url, json=data)
-            return self._parse_response(response)
-        except Exception as e:
-            if self.verbose:
-                print(f"OSV query failed for {purl}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request("POST", url, json=data)
+        return self._parse_response(response)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
-        Note: OSV doesn't directly support CPE queries.
-        This method returns an empty list.
+        Note: OSV is keyed by PURL and has no CPE lookup.
 
         Args:
             cpe: CPE string
 
-        Returns:
-            Empty list (OSV doesn't support CPE)
+        Raises:
+            UnsupportedQueryError: Always; OSV is a PURL-keyed database
         """
-        # OSV doesn't support CPE queries directly
-        return []
+        raise UnsupportedQueryError("OSV cannot be queried by CPE; use a PURL")
 
     def _parse_response(self, response: Dict[str, Any]) -> List[Vulnerability]:
         """Parse OSV API response into Vulnerability objects.
@@ -65,16 +61,30 @@ class OSVClient(BaseClient):
             List of Vulnerability objects
         """
         vulnerabilities = []
+        vulns = response.get("vulns", [])
+        parse_failures = 0
 
-        for vuln_data in response.get("vulns", []):
+        for vuln_data in vulns:
             try:
                 vuln = self._parse_vulnerability(vuln_data)
                 if vuln:
                     vulnerabilities.append(vuln)
+                else:
+                    # _parse_vulnerability returns None only for a record with
+                    # no id, which is malformed rather than inapplicable. OSV
+                    # has no version filtering here, so unlike the GitHub
+                    # client a None is always a failure.
+                    parse_failures += 1
             except Exception as e:
+                parse_failures += 1
                 if self.verbose:
                     print(f"Error parsing OSV vulnerability: {e}")
                 continue
+
+        # Every record failing to parse means the response shape changed, not
+        # that the package is clean.
+        if vulns and parse_failures == len(vulns):
+            raise RuntimeError(f"OSV returned {len(vulns)} records but none could be parsed")
 
         return vulnerabilities
 
