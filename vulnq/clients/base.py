@@ -109,7 +109,7 @@ class BaseClient(ABC):
         if reset:
             try:
                 seconds = int(float(reset)) - int(time.time())
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 return "Retry later."
             if seconds > 0:
                 return f"Resets in {seconds} seconds."

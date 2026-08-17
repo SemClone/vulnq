@@ -228,6 +228,15 @@ class VulnerabilityQuery:
             )
             result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
 
+        # Sources disagree about offsets, so without this one envelope can
+        # carry NVD's naive timestamps beside OSV's offset-aware ones and a
+        # consumer has to handle both shapes.
+        for vuln in result.vulnerabilities:
+            if vuln.published_date:
+                vuln.published_date = _as_utc(vuln.published_date)
+            if vuln.modified_date:
+                vuln.modified_date = _as_utc(vuln.modified_date)
+
         # Enrich after both branches converge, so a CVE found by three sources
         # is stamped once and the VulnerableCode-only path is not skipped.
         if self._enricher:
@@ -284,8 +293,8 @@ class VulnerabilityQuery:
         except UnsupportedQueryError as e:
             # Cannot be asked, as opposed to asked and broken.
             result.sources_skipped[VulnerabilitySource.VULNERABLECODE.value] = str(e)
-        except RateLimitError:
-            result.errors.append("vulnerablecode: Rate limit exceeded")
+        except RateLimitError as e:
+            result.errors.append(f"vulnerablecode: {e}")
         except Exception as e:
             result.errors.append(f"vulnerablecode: {str(e)}")
             if self.verbose:
@@ -357,7 +366,8 @@ class VulnerabilityQuery:
                     # stays visible among them.
                     result.sources_skipped[source.value] = str(task_result)
                 elif isinstance(task_result, RateLimitError):
-                    result.errors.append(f"{source.value}: Rate limit exceeded")
+                    # Keep the message: it carries when the limit resets.
+                    result.errors.append(f"{source.value}: {task_result}")
                 else:
                     result.errors.append(f"{source.value}: {str(task_result)}")
 
@@ -506,7 +516,9 @@ class VulnerabilityQuery:
                 not merged.published_date
                 or _as_utc(vuln.published_date) < _as_utc(merged.published_date)
             ):
-                merged.published_date = vuln.published_date
+                # Stored normalized, so a merged record does not present one
+                # source's naive timestamp beside another's offset-aware one.
+                merged.published_date = _as_utc(vuln.published_date)
 
         return merged
 

@@ -43,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure rather than skipped; only a record that does not apply to the queried
   version yields nothing without being counted
 - A rate-limit message reported `X-RateLimit-Reset`, an epoch timestamp, as a
-  delay in seconds
+  delay in seconds, and the corrected message was then discarded by the caller
+  in favour of a bare label. The reset time now reaches `errors`
+- Merged records stored one source's naive timestamp beside another's
+  offset-aware one; published dates are now normalized on assignment
 
 ### Added
 - `sources_skipped` on `QueryResult`, mapping a source to why it could not be

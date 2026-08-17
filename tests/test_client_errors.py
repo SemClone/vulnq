@@ -102,12 +102,13 @@ class TestSkippedVersusFailed:
 
     def test_rate_limit_surfaces_as_a_rate_limit(self, monkeypatch):
         """The RateLimitError branch in core was unreachable dead code."""
-        fail_with(monkeypatch, RateLimitError("Retry after 60 seconds"))
+        fail_with(monkeypatch, RateLimitError("Rate limit exceeded. Retry after 60 seconds."))
 
         result = engine(VulnerabilitySource.OSV).query(PURL)
 
         assert result.sources_checked == []
-        assert any("Rate limit exceeded" in error for error in result.errors)
+        # The detail is preserved rather than flattened to a bare label.
+        assert any("Retry after 60 seconds" in error for error in result.errors)
 
     def test_partial_failure_keeps_the_working_source(self, monkeypatch):
         """One source failing must not discard another's answer."""
@@ -291,7 +292,8 @@ class TestGraphQLErrors:
 
         result = engine(VulnerabilitySource.GITHUB).query(PURL)
 
-        assert any("Rate limit exceeded" in error for error in result.errors)
+        assert result.sources_checked == []
+        assert any("API rate limit exceeded" in error for error in result.errors)
 
     def test_missing_data_key_is_not_an_empty_answer(self, monkeypatch):
         """A wrong-shaped 200 body is a shape change, not a clean package."""
@@ -460,3 +462,69 @@ class TestMergeAcrossSources:
 
         # The earlier of the two wins, and nothing raises.
         assert merged.published_date.replace(tzinfo=None) == datetime(2024, 3, 20, 12, 0)
+
+
+class TestRetryHint:
+    """The rate-limit message has to survive to the caller and never raise."""
+
+    @pytest.mark.parametrize(
+        "headers,expected",
+        [
+            ({"Retry-After": "60"}, "Retry after 60 seconds."),
+            ({"X-RateLimit-Reset": "inf"}, "Retry later."),
+            ({"X-RateLimit-Reset": "nan"}, "Retry later."),
+            ({"X-RateLimit-Reset": "not-a-number"}, "Retry later."),
+            ({}, "Retry later."),
+        ],
+    )
+    def test_hint_never_raises(self, headers, expected):
+        """It runs inside RateLimitError construction, so a raise would mask it."""
+        from vulnq.clients.base import BaseClient
+
+        assert BaseClient._retry_hint(headers) == expected
+
+    def test_reset_epoch_becomes_a_delay(self):
+        """The header is an epoch timestamp, not a delay in seconds."""
+        import time
+
+        from vulnq.clients.base import BaseClient
+
+        hint = BaseClient._retry_hint({"X-RateLimit-Reset": str(int(time.time()) + 120)})
+
+        assert "Resets in" in hint
+        assert "119" in hint or "120" in hint
+
+    def test_rate_limit_detail_reaches_the_result(self, monkeypatch):
+        """The message was built and then discarded by the caller."""
+        fail_with(monkeypatch, RateLimitError("Rate limit exceeded. Resets in 42 seconds."))
+
+        result = engine(VulnerabilitySource.OSV).query(PURL)
+
+        assert any("Resets in 42 seconds" in error for error in result.errors)
+
+    def test_envelope_dates_are_uniformly_offset_aware(self, monkeypatch):
+        """One result must not mix naive and aware timestamps across records."""
+        from datetime import datetime
+
+        from vulnq.models import Vulnerability
+
+        async def fake_sources(identifier, id_type, package_info, result):
+            result.sources_checked.append(VulnerabilitySource.NVD)
+            return [
+                Vulnerability(
+                    id="CVE-2000-0001",
+                    source=VulnerabilitySource.NVD,
+                    summary="naive from nvd",
+                    published_date=datetime(2022, 11, 26, 22, 15, 10),
+                    modified_date=datetime(2022, 11, 27, 1, 0, 0),
+                )
+            ]
+
+        e = engine(VulnerabilitySource.NVD)
+        monkeypatch.setattr(e, "_query_all_sources", fake_sources)
+        result = e.query(PURL)
+
+        published = result.vulnerabilities[0].published_date
+        modified = result.vulnerabilities[0].modified_date
+        assert published.tzinfo is not None
+        assert modified.tzinfo is not None
