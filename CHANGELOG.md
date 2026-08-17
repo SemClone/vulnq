@@ -27,7 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sources_checked` claimed VulnerableCode had been checked on queries where no
   lookup was performed
 - The CLI printed a raw traceback for an unknown `--sources` value; it now
-  names the valid sources and exits 2
+  names the offending value and the valid sources, and exits 2
+- `--sources vulnerablecode` resolved to zero sources and failed with a message
+  that called VulnerableCode available. It now selects VulnerableCode, and the
+  no-sources error distinguishes selectable fan-out sources from it
+- Enabling `use_vulnerablecode` after constructing `VulnerabilityQuery` left a
+  path that returned an empty result with no error
+
+## [1.1.0] - 2026-08-17
 
 ### Added
 - Exploitability enrichment from published snapshots: CISA KEV known-exploited

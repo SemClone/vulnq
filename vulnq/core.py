@@ -19,6 +19,15 @@ from .models import (
 )
 from .utils import detect_identifier_type, parse_identifier
 
+# Sources that can be named in `Configuration.sources` and queried in parallel.
+# VulnerableCode is deliberately absent: it replaces the fan-out rather than
+# joining it, and is enabled through `use_vulnerablecode`.
+FANOUT_SOURCES = (
+    VulnerabilitySource.OSV,
+    VulnerabilitySource.GITHUB,
+    VulnerabilitySource.NVD,
+)
+
 
 def _unsupported_identifier_error(id_type: IdentifierType) -> str:
     """Describe an identifier type no configured client can answer.
@@ -130,10 +139,18 @@ class VulnerabilityQuery:
             # a clean bill of health. Fail here instead, while the caller can
             # still see that nothing was ever going to be queried.
             requested = ", ".join(source.value for source in self.config.sources) or "none"
-            available = ", ".join(source.value for source in VulnerabilitySource)
+            selectable = ", ".join(source.value for source in FANOUT_SOURCES)
+            hint = ""
+            if VulnerabilitySource.VULNERABLECODE in self.config.sources:
+                # Naming it in `sources` looks reasonable but does nothing;
+                # VulnerableCode replaces the fan-out rather than joining it.
+                hint = (
+                    " VulnerableCode is not part of the multi-source fan-out; "
+                    "enable it with use_vulnerablecode instead."
+                )
             raise NoSourcesConfiguredError(
                 f"No queryable vulnerability sources configured (requested: {requested}). "
-                f"Available sources: {available}."
+                f"Selectable sources: {selectable}.{hint}"
             )
 
         return clients
@@ -215,7 +232,14 @@ class VulnerabilityQuery:
         """
         client = self._clients.get(VulnerabilitySource.VULNERABLECODE)
         if not client:
-            return result
+            # Reachable if use_vulnerablecode was flipped after construction,
+            # so the guard in _initialize_clients never saw it. Returning here
+            # silently would be the same clean-bill-of-health bug this module
+            # exists to prevent.
+            raise NoSourcesConfiguredError(
+                "VulnerableCode was selected but no client was initialized. "
+                "Set use_vulnerablecode before constructing VulnerabilityQuery."
+            )
 
         try:
             # Start session

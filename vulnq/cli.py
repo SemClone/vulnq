@@ -179,7 +179,11 @@ def print_markdown(result: QueryResult):
     help="Minimum severity to report",
 )
 @click.option("--show-fixes", is_flag=True, help="Show fixed versions in output")
-@click.option("--sources", multiple=True, help="Vulnerability sources to check (osv, github, nvd)")
+@click.option(
+    "--sources",
+    multiple=True,
+    help="Sources to check: osv, github, nvd. Naming vulnerablecode selects it instead.",
+)
 @click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
 @click.option("--no-cache", is_flag=True, help="Disable caching")
 @click.option(
@@ -272,12 +276,24 @@ def main(
     if sources:
         from .models import VulnerabilitySource
 
-        try:
-            config.sources = [VulnerabilitySource(s) for s in sources]
-        except ValueError:
-            valid = ", ".join(source.value for source in VulnerabilitySource)
-            console.print(f"[red]Unknown source.[/red] Available sources: {valid}")
-            sys.exit(2)
+        parsed = []
+        for name in sources:
+            try:
+                parsed.append(VulnerabilitySource(name))
+            except ValueError:
+                valid = ", ".join(source.value for source in VulnerabilitySource)
+                console.print(f"[red]Unknown source '{name}'.[/red] Available sources: {valid}")
+                sys.exit(2)
+
+        # VulnerableCode replaces the fan-out rather than joining it, so naming
+        # it here means the same thing as passing --use-vulnerablecode. Doing
+        # nothing instead would leave the caller with no sources at all.
+        if VulnerabilitySource.VULNERABLECODE in parsed:
+            config.use_vulnerablecode = True
+            parsed = [s for s in parsed if s is not VulnerabilitySource.VULNERABLECODE]
+
+        if parsed:
+            config.sources = parsed
 
     # Initialize query engine
     try:

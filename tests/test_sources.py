@@ -2,8 +2,11 @@
 
 import pytest
 
+from click.testing import CliRunner
+
 from vulnq import NoSourcesConfiguredError, VulnerabilitySource
-from vulnq.core import VulnerabilityQuery
+from vulnq.cli import main
+from vulnq.core import FANOUT_SOURCES, VulnerabilityQuery
 from vulnq.models import Configuration, IdentifierType, QueryResult
 
 
@@ -45,15 +48,33 @@ class TestNoSourcesConfigured:
 
         assert "No queryable vulnerability sources" in str(excinfo.value)
 
-    def test_error_names_what_was_requested_and_what_exists(self):
+    def test_error_names_what_was_requested_and_what_is_selectable(self):
         """The message has to be actionable without reading the source."""
         with pytest.raises(NoSourcesConfiguredError) as excinfo:
             VulnerabilityQuery(config=Configuration(sources=[]))
 
         message = str(excinfo.value)
         assert "requested: none" in message
-        for source in VulnerabilitySource:
+        for source in FANOUT_SOURCES:
             assert source.value in message
+
+    def test_vulnerablecode_alone_is_not_called_selectable(self):
+        """Listing it as available while rejecting it would contradict itself."""
+        with pytest.raises(NoSourcesConfiguredError) as excinfo:
+            VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE]))
+
+        message = str(excinfo.value)
+        assert "requested: vulnerablecode" in message
+        assert "use_vulnerablecode" in message
+        assert "Selectable sources: osv, github, nvd." in message
+
+    def test_vulnerablecode_client_missing_raises(self):
+        """Flipping the flag after construction must not yield a silent empty."""
+        engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.OSV]))
+        engine.config.use_vulnerablecode = True
+
+        with pytest.raises(NoSourcesConfiguredError):
+            engine.query("pkg:npm/left-pad@1.3.0")
 
     def test_error_is_catchable_as_runtime_error(self):
         """Consumers catching RuntimeError keep working."""
@@ -122,3 +143,46 @@ class TestUnsupportedIdentifier:
         assert isinstance(result, QueryResult)
         assert result.sources_checked == [VulnerabilitySource.OSV]
         assert result.errors == []
+
+
+class TestCLISourceHandling:
+    """The CLI must not turn a source choice into a silent no-op."""
+
+    def test_unknown_source_names_the_offender(self):
+        """With several --sources flags the user should not have to guess."""
+        result = CliRunner().invoke(
+            main, ["pkg:npm/express@4.17.1", "--sources", "osv", "--sources", "bogus"]
+        )
+
+        assert result.exit_code == 2
+        assert "bogus" in result.output
+
+    def test_vulnerablecode_source_selects_vulnerablecode(self, monkeypatch):
+        """Naming it must select it, not resolve to zero sources."""
+        captured = {}
+
+        def fake_init(self, config=None, verbose=False):
+            captured["config"] = config
+            raise SystemExit(0)
+
+        monkeypatch.setattr("vulnq.cli.VulnerabilityQuery.__init__", fake_init)
+        CliRunner().invoke(main, ["pkg:npm/express@4.17.1", "--sources", "vulnerablecode"])
+
+        assert captured["config"].use_vulnerablecode is True
+
+    def test_mixed_sources_keep_the_fanout_ones(self, monkeypatch):
+        """Selecting VulnerableCode must not silently discard the rest."""
+        captured = {}
+
+        def fake_init(self, config=None, verbose=False):
+            captured["config"] = config
+            raise SystemExit(0)
+
+        monkeypatch.setattr("vulnq.cli.VulnerabilityQuery.__init__", fake_init)
+        CliRunner().invoke(
+            main,
+            ["pkg:npm/express@4.17.1", "--sources", "osv", "--sources", "vulnerablecode"],
+        )
+
+        assert captured["config"].use_vulnerablecode is True
+        assert captured["config"].sources == [VulnerabilitySource.OSV]

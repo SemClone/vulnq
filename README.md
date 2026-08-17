@@ -113,6 +113,12 @@ result that reads as a clean scan.
 - `cpe:/a:vendor:product:version` (legacy format)
 
 ### File Hashes
+
+Detected and parsed, but **not queryable** — none of the upstream databases
+accept a file hash as a lookup key. `--sha256`, `--sha1`, and `--md5` are
+accepted and return no results with an explicit error saying no lookup was
+performed, rather than an empty result that would read as a clean scan.
+
 - SHA256
 - SHA1
 - MD5
