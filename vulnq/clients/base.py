@@ -78,8 +78,8 @@ class BaseClient(ABC):
         if dropped <= 0:
             return
         message = (
-            f"{dropped} of {total} records returned by {self.source.value} could not be "
-            "parsed and are missing from this result"
+            f"{dropped} of {total} records returned could not be parsed and are "
+            "missing from this result"
         )
         if detail:
             message += f" (last error: {detail})"

@@ -184,7 +184,7 @@ class GitHubClient(BaseClient):
         # being bitten by. If the page cap stopped us, say how much is missing.
         if total_count is not None and len(nodes) < total_count:
             self.parse_warnings.append(
-                f"github returned only {len(nodes)} of {total_count} advisories for {name}; "
+                f"returned only {len(nodes)} of {total_count} advisories for {name}; "
                 f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 

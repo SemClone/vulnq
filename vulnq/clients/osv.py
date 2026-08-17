@@ -60,8 +60,8 @@ class OSVClient(BaseClient):
         else:
             # Stopping short must not pass for having read everything.
             self.parse_warnings.append(
-                f"osv returned more than {len(vulns)} records for {purl} and the rest were "
-                f"not fetched (page limit of {MAX_PAGES} reached)"
+                f"stopped after {len(vulns)} records for {purl} with more still to come; "
+                f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 
         return self._parse_vulns(vulns, self._queried_version(purl))

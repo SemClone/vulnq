@@ -84,7 +84,7 @@ class NVDClient(BaseClient):
         returned = len(response.get("vulnerabilities") or [])
         if isinstance(total, int) and total > returned:
             self.parse_warnings.append(
-                f"nvd returned only {returned} of {total} records for {cpe}; the rest were "
+                f"returned only {returned} of {total} records for {cpe}; the rest were "
                 "not fetched. Narrow the CPE to see them"
             )
 

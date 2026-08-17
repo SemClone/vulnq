@@ -293,10 +293,36 @@ def _gem_segments(version: str) -> List[Any]:
     # advisories that applied.
     segments: List[Any] = []
     for token in re.findall(r"\d+|[A-Za-z]+", version.replace("-", ".pre.")):
-        segments.append(int(token) if token.isdigit() else token.lower())
+        # Gem compares letter segments as-is; lowercasing them made "RC1" and
+        # "rc1" equal where Ruby orders them.
+        segments.append(int(token) if token.isdigit() else token)
     if not segments:
         raise UnparseableVersion(version)
-    return segments
+    return _canonical_gem_segments(segments)
+
+
+def _canonical_gem_segments(segments: List[Any]) -> List[Any]:
+    """Drop trailing zeros the way Gem::Version#canonical_segments does.
+
+    Gem splits the segments at the first letter and drops trailing zeros from
+    each half independently, which is what makes "0.9.b" and "0.9.0.b" the
+    same version. Zero-padding alone ordered them apart, and confidently
+    wrongly.
+
+    Args:
+        segments: Raw int and str segments
+
+    Returns:
+        The canonical segment list
+    """
+    first_text = next((i for i, s in enumerate(segments) if isinstance(s, str)), len(segments))
+    canonical: List[Any] = []
+    for half in (segments[:first_text], segments[first_text:]):
+        end = len(half)
+        while end > 0 and half[end - 1] == 0:
+            end -= 1
+        canonical.extend(half[:end])
+    return canonical
 
 
 def _compare_gem(left: str, right: str) -> int:

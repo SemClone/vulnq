@@ -290,3 +290,29 @@ class TestGoIncompatibleSuffix:
 
     def test_other_build_metadata_is_still_undecided(self):
         assert compare_versions("golang", "11.0.6+security-01", "11.0.6") is None
+
+
+class TestGemCanonicalSegments:
+    """Gem drops trailing zeros before comparing, and is case-sensitive.
+
+    Zero-padding alone made "0.9.b" and "0.9.0.b" different versions, which is
+    a confidently wrong answer in the direction that excludes advisories.
+    Verified against the system Ruby's Gem::Version.
+    """
+
+    @pytest.mark.parametrize(
+        "left,right,expected",
+        [
+            ("0.9.b", "0.9.0.b", 0),
+            ("1.0", "1.0.0.0", 0),
+            ("2.2.3", "2.2.3.0", 0),
+            ("1.0.0.a", "1.0.0.0.a", 0),
+            # Ruby compares letter segments as written.
+            ("4.1.9.RC1", "4.1.9.rc1", -1),
+            ("1.1.0.RC2", "1.1.0.rc2", -1),
+            # Trailing zeros still do not erase a real difference.
+            ("2.2.3.1", "2.2.3", 1),
+        ],
+    )
+    def test_matches_ruby_gem_version(self, left, right, expected):
+        assert compare_versions("gem", left, right) == expected
