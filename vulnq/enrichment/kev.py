@@ -17,6 +17,14 @@ KEV_CATALOG_URL = (
 )
 KEV_SOURCE = "cisa-kev"
 
+# A KEV snapshot confers verified negatives, so an implausibly small one is
+# dangerous in a way an incomplete EPSS snapshot is not: it would mark every
+# unmatched CVE as not-exploited. The real catalog has been four figures for
+# years, so anything below this floor is a broken mine - an upstream schema
+# change, a truncated download - and is refused at both ends rather than
+# quietly published and joined.
+KEV_MIN_PLAUSIBLE_RECORDS = 100
+
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
     """Parse a KEV date string, tolerating anything unexpected.
@@ -47,6 +55,7 @@ def mine_kev(timeout: int = 60, url: str = KEV_CATALOG_URL) -> Snapshot:
 
     Raises:
         requests.HTTPError: If the catalog cannot be fetched
+        ValueError: If the catalog parsed to an implausibly small number of rows
     """
     response = requests.get(url, timeout=timeout)
     response.raise_for_status()
@@ -65,6 +74,13 @@ def mine_kev(timeout: int = 60, url: str = KEV_CATALOG_URL) -> Snapshot:
             "known_ransomware": _ransomware_flag(entry.get("knownRansomwareCampaignUse")),
             "required_action": entry.get("requiredAction"),
         }
+
+    if len(records) < KEV_MIN_PLAUSIBLE_RECORDS:
+        raise ValueError(
+            f"KEV catalog parsed to {len(records)} records, below the plausible "
+            f"floor of {KEV_MIN_PLAUSIBLE_RECORDS}. Refusing to publish a snapshot "
+            "that would mark every unmatched CVE as not-exploited."
+        )
 
     return Snapshot(
         source=KEV_SOURCE,
@@ -112,19 +128,30 @@ class KEVReader(SnapshotReader):
         vuln.kev_known_ransomware = record.get("known_ransomware")
         vuln.kev_required_action = record.get("required_action")
 
-    def apply(self, vulnerabilities: List[Vulnerability]) -> None:
+    def _apply(self, vulnerabilities: List[Vulnerability]) -> None:
         """Stamp KEV facts, defaulting matched-nothing to a verified negative.
 
         Unlike EPSS, a successful KEV join is exhaustive: the catalog is the
         complete list of known-exploited CVEs, so a CVE absent from a fresh
-        snapshot really is not on it. That is only true when the snapshot
-        loaded and is not stale - otherwise every field stays None.
+        snapshot really is not on it.
+
+        That reasoning only holds while the snapshot is plausibly the real
+        catalog. A snapshot that failed to load, is stale, or came back
+        implausibly small proves nothing, so every field stays None rather
+        than becoming a fleet-wide false negative.
 
         Args:
             vulnerabilities: Vulnerabilities to enrich
         """
         snapshot = self.load()
         if not snapshot or self.is_stale(snapshot):
+            return
+
+        if snapshot.count < KEV_MIN_PLAUSIBLE_RECORDS:
+            self._error = (
+                f"KEV snapshot holds {snapshot.count} records, below the plausible "
+                f"floor of {KEV_MIN_PLAUSIBLE_RECORDS}; refusing to infer negatives"
+            )
             return
 
         for vuln in vulnerabilities:

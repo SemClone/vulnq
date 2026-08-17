@@ -118,12 +118,33 @@ def print_markdown(result: QueryResult):
     md += f"- **Critical:** {result.critical_count}\n"
     md += f"- **High:** {result.high_count}\n\n"
 
+    for provenance in result.enrichment.values():
+        if provenance.available and not provenance.stale:
+            md += f"- **{provenance.source}:** {provenance.version or 'unknown'}\n"
+        else:
+            md += f"- **{provenance.source}:** unavailable, exploitability unknown\n"
+    if result.enrichment:
+        md += "\n"
+
     if result.vulnerabilities:
         md += "## Vulnerabilities\n\n"
 
         for vuln in result.vulnerabilities:
             md += f"### {vuln.id} - {vuln.severity.value}\n\n"
             md += f"**CVSS Score:** {vuln.cvss_score or 'N/A'}\n\n"
+
+            if vuln.known_exploited is not None:
+                exploited = "Yes" if vuln.known_exploited else "No"
+                md += f"**Known Exploited (CISA KEV):** {exploited}\n\n"
+                if vuln.known_exploited and vuln.kev_required_action:
+                    md += f"**Required Action:** {vuln.kev_required_action}\n\n"
+
+            if vuln.epss_score is not None:
+                md += f"**EPSS:** {vuln.epss_score:.5f}"
+                if vuln.epss_percentile is not None:
+                    md += f" (percentile {vuln.epss_percentile:.5f})"
+                md += "\n\n"
+
             md += f"**Summary:** {vuln.summary}\n\n"
 
             if vuln.fixed_versions:

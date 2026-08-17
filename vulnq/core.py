@@ -64,8 +64,13 @@ class VulnerabilityQuery:
         if max_age:
             try:
                 config.snapshot_max_age_days = int(max_age)
-            except ValueError:
-                pass
+            except ValueError as exc:
+                # Swallowing this would silently disable a freshness gate the
+                # operator believes is switched on, and a stale snapshot would
+                # then be trusted. Fail where it can be seen.
+                raise ValueError(
+                    f"VULNQ_SNAPSHOT_MAX_AGE_DAYS must be an integer, got {max_age!r}"
+                ) from exc
 
         return config
 

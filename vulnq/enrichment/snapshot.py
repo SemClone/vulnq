@@ -13,8 +13,10 @@ import gzip
 import json
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -129,12 +131,24 @@ class Snapshot:
         if raw_fetched:
             try:
                 fetched_at = datetime.fromisoformat(str(raw_fetched).replace("Z", "+00:00"))
-            except ValueError:
-                fetched_at = None
+            except ValueError as exc:
+                # An undated snapshot cannot be age-checked, and silently
+                # nulling the stamp would let it slip past a configured
+                # freshness gate. Refuse it here instead.
+                raise ValueError(f"Unparseable snapshot fetched_at: {raw_fetched!r}") from exc
 
         records = document.get("records") or {}
         if not isinstance(records, dict):
             raise ValueError("Snapshot records must be an object keyed by CVE id")
+
+        # Record values are validated up front so a malformed snapshot fails at
+        # load, where unavailability is already non-fatal, rather than raising
+        # from inside stamp() and taking the whole query down with it.
+        for key, value in records.items():
+            if not isinstance(value, dict):
+                raise ValueError(
+                    f"Snapshot record for {key!r} must be an object, got {type(value)}"
+                )
 
         return cls(
             source=str(document.get("source") or "unknown"),
@@ -181,8 +195,13 @@ def _read_document(location: str, filename: str, timeout: int) -> Dict[str, Any]
     """
     if location.startswith("http://") or location.startswith("https://"):
         url = location
-        if not url.rstrip("/").endswith(".json.gz"):
-            url = f"{url.rstrip('/')}/{filename}"
+        parts = urlsplit(location)
+        # Only the path decides whether the URL already names a snapshot file.
+        # Appending to the raw string would land after the query string and
+        # break presigned S3 and GCS URLs.
+        if not parts.path.rstrip("/").endswith(".json.gz"):
+            path = f"{parts.path.rstrip('/')}/{filename}"
+            url = urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         remote: Dict[str, Any] = json.loads(gzip.decompress(response.content).decode("utf-8"))
@@ -230,6 +249,9 @@ class SnapshotReader:
         self._snapshot: Optional[Snapshot] = None
         self._error: Optional[str] = None
         self._loaded = False
+        # A reader is shared across a worker's queries, so the first load must
+        # not be observable as "absent" by a second thread arriving mid-read.
+        self._lock = threading.Lock()
 
     def load(self) -> Optional[Snapshot]:
         """Load the snapshot, at most once.
@@ -243,15 +265,20 @@ class SnapshotReader:
         if self._loaded:
             return self._snapshot
 
-        self._loaded = True
-        try:
-            document = _read_document(self.location, self.filename, self.timeout)
-            self._snapshot = Snapshot.from_document(document)
-        except Exception as exc:  # noqa: BLE001 - unavailability must stay non-fatal
-            self._error = str(exc)
-            self._snapshot = None
-            if self.verbose:
-                print(f"{self.source} snapshot unavailable: {exc}")
+        with self._lock:
+            if self._loaded:
+                return self._snapshot
+
+            try:
+                document = _read_document(self.location, self.filename, self.timeout)
+                self._snapshot = Snapshot.from_document(document)
+            except Exception as exc:  # noqa: BLE001 - unavailability must stay non-fatal
+                self._error = str(exc)
+                self._snapshot = None
+                if self.verbose:
+                    print(f"{self.source} snapshot unavailable: {exc}")
+            finally:
+                self._loaded = True
 
         return self._snapshot
 
@@ -268,13 +295,15 @@ class SnapshotReader:
             return False
         age = snapshot.age_seconds()
         if age is None:
-            return False
+            # An operator who configured a freshness gate is asking for proof
+            # of freshness. A snapshot that cannot supply it does not pass.
+            return True
         return age > self.max_age_days * 86400
 
     def provenance(self) -> SnapshotProvenance:
         """Describe the snapshot this reader joined against."""
         snapshot = self.load()
-        if not snapshot:
+        if not snapshot or self._error:
             return SnapshotProvenance(
                 source=self.source,
                 available=False,
@@ -293,6 +322,23 @@ class SnapshotReader:
 
     def apply(self, vulnerabilities: List[Vulnerability]) -> None:
         """Stamp snapshot facts onto each vulnerability in place.
+
+        Enrichment is an add-on to the answer, never a precondition for it. An
+        unforeseen failure here degrades to "unknown" and is reported through
+        provenance rather than taking the whole vulnerability query down.
+
+        Args:
+            vulnerabilities: Vulnerabilities to enrich
+        """
+        try:
+            self._apply(vulnerabilities)
+        except Exception as exc:  # noqa: BLE001 - enrichment must never be fatal
+            self._error = f"enrichment failed: {exc}"
+            if self.verbose:
+                print(f"{self.source} enrichment failed: {exc}")
+
+    def _apply(self, vulnerabilities: List[Vulnerability]) -> None:
+        """Join the snapshot onto each vulnerability.
 
         Args:
             vulnerabilities: Vulnerabilities to enrich

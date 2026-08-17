@@ -19,7 +19,7 @@ from vulnq.enrichment import (
     write_snapshot,
 )
 from vulnq.enrichment.epss import EPSS_SOURCE
-from vulnq.enrichment.kev import KEV_SOURCE
+from vulnq.enrichment.kev import KEV_MIN_PLAUSIBLE_RECORDS, KEV_SOURCE
 from vulnq.models import Configuration, QueryResult, Vulnerability, VulnerabilitySource
 from vulnq.models import IdentifierType
 
@@ -34,23 +34,32 @@ def make_vuln(vuln_id="CVE-2021-44228", aliases=None, source=VulnerabilitySource
     )
 
 
+def default_kev_records():
+    """Build a plausibly-sized KEV catalog holding the CVE under test.
+
+    Padded past KEV_MIN_PLAUSIBLE_RECORDS on purpose: an undersized catalog is
+    refused as a broken mine, so a one-row fixture would exercise the wrong
+    path in every test that just wants a working join.
+    """
+    records = {
+        "CVE-2021-44228": {
+            "date_added": "2021-12-10",
+            "known_ransomware": True,
+            "required_action": "Apply updates per vendor instructions.",
+        }
+    }
+    for i in range(KEV_MIN_PLAUSIBLE_RECORDS):
+        records[f"CVE-2020-{i:04d}"] = {"date_added": "2020-01-01"}
+    return records
+
+
 def write_kev_snapshot(tmp_path, records=None, fetched_at=None, version="2026.08.14"):
     """Write a KEV snapshot to a temp directory and return the directory."""
     snapshot = Snapshot(
         source=KEV_SOURCE,
         version=version,
         fetched_at=fetched_at or datetime.now(timezone.utc),
-        records=(
-            records
-            if records is not None
-            else {
-                "CVE-2021-44228": {
-                    "date_added": "2021-12-10",
-                    "known_ransomware": True,
-                    "required_action": "Apply updates per vendor instructions.",
-                }
-            }
-        ),
+        records=default_kev_records() if records is None else records,
     )
     write_snapshot(snapshot, str(tmp_path))
     return str(tmp_path)
@@ -210,7 +219,7 @@ class TestKEVReader:
 
         assert provenance.available is True
         assert provenance.version == "2026.08.14"
-        assert provenance.record_count == 1
+        assert provenance.record_count == KEV_MIN_PLAUSIBLE_RECORDS + 1
 
     def test_snapshot_loaded_once(self, tmp_path):
         """The snapshot is held resident rather than re-read per call."""
@@ -384,6 +393,188 @@ class TestEnricher:
         assert payload["enrichment"][KEV_SOURCE]["available"] is False
 
 
+class TestFailureModes:
+    """Test that broken snapshots degrade to unknown rather than to a verdict."""
+
+    def test_empty_kev_snapshot_confers_no_negatives(self, tmp_path):
+        """A mine that parsed nothing must not mark the world not-exploited."""
+        reader = KEVReader(write_kev_snapshot(tmp_path, records={}))
+        vuln = make_vuln("CVE-2021-44228")
+        reader.apply([vuln])
+
+        assert vuln.known_exploited is None
+        assert reader.provenance().available is False
+
+    def test_undersized_kev_snapshot_confers_no_negatives(self, tmp_path):
+        """A truncated catalog is as dangerous as an empty one."""
+        records = {f"CVE-2020-{i:04d}": {"date_added": "2020-01-01"} for i in range(5)}
+        reader = KEVReader(write_kev_snapshot(tmp_path, records=records))
+        vuln = make_vuln("CVE-2021-44228")
+        reader.apply([vuln])
+
+        assert vuln.known_exploited is None
+
+    def test_mine_kev_refuses_implausible_catalog(self, monkeypatch):
+        """An upstream schema change must fail the mine, not publish an empty one."""
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                # "vulnerabilities" renamed upstream: every row is lost.
+                return {"catalogVersion": "2026.08.14", "items": [{"cveID": "CVE-2021-44228"}]}
+
+        monkeypatch.setattr("vulnq.enrichment.kev.requests.get", lambda *a, **k: FakeResponse())
+
+        with pytest.raises(ValueError, match="below the plausible floor"):
+            mine_kev()
+
+    def test_corrupt_record_does_not_kill_the_query(self, tmp_path):
+        """One bad published snapshot must not take vulnerability results down."""
+        location = write_epss_snapshot(tmp_path, records={"CVE-2021-44228": "not-a-record"})
+        reader = EPSSReader(location)
+        vuln = make_vuln("CVE-2021-44228")
+
+        reader.apply([vuln])  # must not raise
+
+        assert vuln.epss_score is None
+        assert reader.provenance().available is False
+
+    def test_undated_snapshot_fails_a_configured_freshness_gate(self, tmp_path):
+        """Freshness that cannot be proven does not pass a gate that demands it."""
+        write_snapshot(
+            Snapshot(KEV_SOURCE, "2026.08.14", None, default_kev_records()), str(tmp_path)
+        )
+        reader = KEVReader(str(tmp_path), max_age_days=7)
+        vuln = make_vuln("CVE-2021-44228")
+        reader.apply([vuln])
+
+        assert vuln.known_exploited is None
+        assert reader.provenance().stale is True
+
+    def test_unparseable_fetched_at_is_refused(self):
+        """A corrupt timestamp must not silently become "no age"."""
+        with pytest.raises(ValueError, match="fetched_at"):
+            Snapshot.from_document(
+                {
+                    "schema": SNAPSHOT_SCHEMA,
+                    "source": KEV_SOURCE,
+                    "fetched_at": "not-a-date",
+                    "records": {},
+                }
+            )
+
+    def test_invalid_max_age_env_is_loud(self, monkeypatch):
+        """Silently ignoring this would disable a gate the operator switched on."""
+        from vulnq.core import VulnerabilityQuery
+
+        monkeypatch.setenv("VULNQ_SNAPSHOT_MAX_AGE_DAYS", "7d")
+
+        with pytest.raises(ValueError, match="must be an integer"):
+            VulnerabilityQuery.load_config()
+
+    def test_presigned_url_query_string_is_preserved(self, monkeypatch):
+        """Appending after a query string would break every S3 and GCS URL."""
+        from vulnq.enrichment import snapshot as snapshot_module
+
+        seen = {}
+
+        class FakeResponse:
+            content = b""
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, timeout=None):
+            seen["url"] = url
+            return FakeResponse()
+
+        monkeypatch.setattr(snapshot_module.requests, "get", fake_get)
+        try:
+            snapshot_module._read_document(
+                "https://bucket.s3.amazonaws.com/snaps?X-Amz-Signature=abc",
+                "cisa-kev.json.gz",
+                30,
+            )
+        except Exception:
+            pass  # the empty body fails to decompress; the URL is what matters
+
+        assert seen["url"] == (
+            "https://bucket.s3.amazonaws.com/snaps/cisa-kev.json.gz?X-Amz-Signature=abc"
+        )
+
+    def test_mine_epss_explicit_date_is_not_substituted(self, monkeypatch):
+        """A named day must be fetched exactly, not silently swapped for another."""
+        from datetime import date
+
+        attempted = []
+
+        def fake_get(url, timeout=None):
+            attempted.append(url)
+            import requests as requests_module
+
+            raise requests_module.RequestException("404")
+
+        monkeypatch.setattr("vulnq.enrichment.epss.requests.get", fake_get)
+
+        with pytest.raises(Exception):
+            mine_epss(score_date=date(2026, 8, 17))
+
+        assert len(attempted) == 1
+
+    def test_mine_epss_falls_back_past_a_corrupt_file(self, monkeypatch):
+        """A corrupt file for one day is what the walk-back exists to survive."""
+        import gzip as gziplib
+
+        calls = []
+
+        class FakeResponse:
+            def __init__(self, content):
+                self.content = content
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, timeout=None):
+            calls.append(url)
+            if len(calls) == 1:
+                # Downloads fine, then decompresses to garbage.
+                return FakeResponse(b"not-gzip-at-all")
+            payload = (
+                "#model_version:v1,score_date:2026-08-16T00:00:00+0000\n"
+                "cve,epss,percentile\n"
+                "CVE-2021-44228,0.9,0.99\n"
+            ).encode("utf-8")
+            return FakeResponse(gziplib.compress(payload))
+
+        monkeypatch.setattr("vulnq.enrichment.epss.requests.get", fake_get)
+        snapshot = mine_epss()
+
+        assert len(calls) == 2
+        assert snapshot.records["CVE-2021-44228"]["score"] == pytest.approx(0.9)
+
+    def test_concurrent_first_load_sees_the_snapshot(self, tmp_path):
+        """A second thread arriving mid-load must not observe an absent snapshot."""
+        import threading
+
+        reader = KEVReader(write_kev_snapshot(tmp_path))
+        results = []
+
+        def query():
+            vuln = make_vuln("CVE-2021-44228")
+            reader.apply([vuln])
+            results.append(vuln.known_exploited)
+
+        threads = [threading.Thread(target=query) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert results == [True] * 8
+
+
 class TestCoreWiring:
     """Test that enrichment reaches every query path."""
 
@@ -453,30 +644,35 @@ class TestMining:
                 return None
 
             def json(self):
-                return {
-                    "catalogVersion": "2026.08.14",
-                    "vulnerabilities": [
-                        {
-                            "cveID": "CVE-2021-44228",
-                            "dateAdded": "2021-12-10",
-                            "knownRansomwareCampaignUse": "Known",
-                            "requiredAction": "Apply updates.",
-                        },
-                        {
-                            "cveID": "CVE-2019-11111",
-                            "dateAdded": "2019-01-01",
-                            "knownRansomwareCampaignUse": "Unknown",
-                            "requiredAction": "Apply updates.",
-                        },
-                        {"cveID": ""},
-                    ],
-                }
+                entries = [
+                    {
+                        "cveID": "CVE-2021-44228",
+                        "dateAdded": "2021-12-10",
+                        "knownRansomwareCampaignUse": "Known",
+                        "requiredAction": "Apply updates.",
+                    },
+                    {
+                        "cveID": "CVE-2019-11111",
+                        "dateAdded": "2019-01-01",
+                        "knownRansomwareCampaignUse": "Unknown",
+                        "requiredAction": "Apply updates.",
+                    },
+                    {"cveID": ""},
+                ]
+                # Padded past the plausibility floor so this exercises
+                # normalization rather than the undersized-catalog refusal.
+                entries += [
+                    {"cveID": f"CVE-2020-{i:04d}", "dateAdded": "2020-01-01"}
+                    for i in range(KEV_MIN_PLAUSIBLE_RECORDS)
+                ]
+                return {"catalogVersion": "2026.08.14", "vulnerabilities": entries}
 
         monkeypatch.setattr("vulnq.enrichment.kev.requests.get", lambda *a, **k: FakeResponse())
         snapshot = mine_kev()
 
         assert snapshot.version == "2026.08.14"
-        assert snapshot.count == 2
+        # The two named rows plus the padding; the blank cveID is dropped.
+        assert snapshot.count == KEV_MIN_PLAUSIBLE_RECORDS + 2
         assert snapshot.records["CVE-2021-44228"]["known_ransomware"] is True
         # "Unknown" is unestablished, not a denial.
         assert snapshot.records["CVE-2019-11111"]["known_ransomware"] is None
@@ -484,7 +680,6 @@ class TestMining:
     def test_mine_epss_falls_back_to_previous_day(self, monkeypatch):
         """Today's file may not be published yet; yesterday's is still valid."""
         import gzip as gziplib
-        from datetime import date
 
         attempted = []
 
@@ -497,7 +692,7 @@ class TestMining:
 
         def fake_get(url, timeout=None):
             attempted.append(url)
-            if "2026-08-17" in url:
+            if len(attempted) == 1:
                 import requests as requests_module
 
                 raise requests_module.RequestException("404")
@@ -509,8 +704,9 @@ class TestMining:
             return FakeResponse(gziplib.compress(payload))
 
         monkeypatch.setattr("vulnq.enrichment.epss.requests.get", fake_get)
-        snapshot = mine_epss(score_date=date(2026, 8, 17))
+        snapshot = mine_epss()
 
         assert len(attempted) == 2
+        # The version comes from the published header, not the attempted date.
         assert snapshot.version == "2026-08-16"
         assert snapshot.records["CVE-2021-44228"]["score"] == pytest.approx(0.9)

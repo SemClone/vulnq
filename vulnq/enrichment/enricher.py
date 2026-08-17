@@ -59,6 +59,7 @@ class Enricher:
             The same result, enriched
         """
         for reader in self.readers:
+            # apply() contains its own failures; provenance reports them.
             reader.apply(result.vulnerabilities)
             result.enrichment[reader.source] = reader.provenance()
 

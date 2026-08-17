@@ -26,6 +26,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `VulnerabilityQuery.load_config()` for callers that build a configuration but
   still want environment defaults
 
+### Safety
+- `vulnq-mine kev` refuses to publish an implausibly small catalog, and a KEV
+  snapshot below that floor confers no negatives. An upstream schema change
+  would otherwise mine cleanly to zero rows and mark every CVE not-exploited
+  across a whole fleet
+- Snapshot records are validated at load, and enrichment failures are contained
+  per source, so one corrupt published snapshot degrades exploitability to
+  unknown instead of failing every vulnerability query
+- A snapshot whose age cannot be established does not pass a configured
+  freshness gate, and an unparseable `fetched_at` is refused outright
+- An invalid `VULNQ_SNAPSHOT_MAX_AGE_DAYS` raises instead of silently
+  disabling the gate the operator believes is switched on
+- Snapshot URLs are parsed rather than concatenated, so presigned S3 and GCS
+  locations work
+- The first snapshot load is serialised, so a second thread cannot observe an
+  absent snapshot mid-load
+- `vulnq-mine epss` fetches an explicitly requested date exactly rather than
+  silently substituting a nearby day, and its walk-back now also survives a
+  corrupt file rather than only a missing one
+
 ### Fixed
 - The CLI built a `Configuration` directly and so never read the environment,
   leaving `GITHUB_TOKEN` and `NVD_API_KEY` unused for every command-line and

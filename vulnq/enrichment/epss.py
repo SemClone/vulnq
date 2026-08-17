@@ -93,11 +93,13 @@ def mine_epss(
 ) -> Snapshot:
     """Fetch and decompress the daily EPSS CSV into a snapshot.
 
-    Scores move once a day, so walking back a few days when today's file is not
-    yet published loses nothing and beats failing the mine.
+    Scores move once a day, so when today's file is not yet published, walking
+    back a few days loses nothing and beats failing the mine. An explicitly
+    requested date is fetched exactly: an operator who names a day wants that
+    day, and silently substituting a different one would misdate the snapshot.
 
     Args:
-        score_date: Day to fetch, defaulting to today in UTC
+        score_date: Day to fetch exactly; None walks back from today in UTC
         timeout: HTTP timeout in seconds
         url_template: URL template, overridable for testing or mirroring
 
@@ -105,22 +107,27 @@ def mine_epss(
         Snapshot keyed by CVE id
 
     Raises:
-        requests.HTTPError: If no recent day could be fetched
+        requests.HTTPError: If no acceptable day could be fetched
     """
+    explicit = score_date is not None
     target = score_date or datetime.now(timezone.utc).date()
+    attempts = 1 if explicit else _MAX_FALLBACK_DAYS + 1
     last_error: Optional[Exception] = None
 
-    for offset in range(_MAX_FALLBACK_DAYS + 1):
+    for offset in range(attempts):
         day = target - timedelta(days=offset)
         url = url_template.format(score_date=day.isoformat())
         try:
             response = requests.get(url, timeout=timeout)
             response.raise_for_status()
-        except requests.RequestException as exc:
+            # Decompression is inside the retry: a truncated or corrupt file
+            # for one day is exactly the case the walk-back exists to survive.
+            payload = gzip.decompress(response.content)
+        except (requests.RequestException, OSError, EOFError) as exc:
             last_error = exc
             continue
 
-        published_date, records = _parse_csv(gzip.decompress(response.content))
+        published_date, records = _parse_csv(payload)
         return Snapshot(
             source=EPSS_SOURCE,
             version=published_date or day.isoformat(),
@@ -128,8 +135,14 @@ def mine_epss(
             records=records,
         )
 
+    if explicit:
+        raise requests.HTTPError(
+            f"No EPSS snapshot available for {target.isoformat()}"
+        ) from last_error
+
     raise requests.HTTPError(
-        f"No EPSS snapshot published in the {_MAX_FALLBACK_DAYS} days before {target.isoformat()}"
+        f"No EPSS snapshot published for {target.isoformat()} "
+        f"or the {_MAX_FALLBACK_DAYS} days before it"
     ) from last_error
 
 
