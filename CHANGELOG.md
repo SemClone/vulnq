@@ -5,6 +5,56 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-17
+
+### Added
+- Exploitability enrichment from published snapshots: CISA KEV known-exploited
+  status and FIRST EPSS exploitation probability, joined on the CVE id after
+  de-duplication
+- `vulnq-mine` command with `kev` and `epss` subcommands for producing
+  snapshots; scheduling, credentials, publishing target, and retention stay
+  outside the tool
+- `Vulnerability` fields `known_exploited`, `kev_date_added`,
+  `kev_known_ransomware`, `kev_required_action`, `epss_score`,
+  `epss_percentile`, and `epss_score_date`
+- `QueryResult.enrichment` records the catalog version or score date each join
+  ran against, plus snapshot age, so a stale join is distinguishable from a
+  fresh one and an answer can be explained later
+- `VULNQ_KEV_SNAPSHOT`, `VULNQ_EPSS_SNAPSHOT`, and
+  `VULNQ_SNAPSHOT_MAX_AGE_DAYS` environment variables with matching
+  `--kev-snapshot`, `--epss-snapshot`, and `--snapshot-max-age-days` flags
+- `VulnerabilityQuery.load_config()` for callers that build a configuration but
+  still want environment defaults
+
+### Safety
+- `vulnq-mine kev` refuses to publish an implausibly small catalog, and a KEV
+  snapshot below that floor confers no negatives. An upstream schema change
+  would otherwise mine cleanly to zero rows and mark every CVE not-exploited
+  across a whole fleet
+- Snapshot records are validated at load, and enrichment failures are contained
+  per source, so one corrupt published snapshot degrades exploitability to
+  unknown instead of failing every vulnerability query
+- A snapshot whose age cannot be established does not pass a configured
+  freshness gate, and an unparseable `fetched_at` is refused outright
+- An invalid `VULNQ_SNAPSHOT_MAX_AGE_DAYS` raises instead of silently
+  disabling the gate the operator believes is switched on
+- Snapshot URLs are parsed rather than concatenated, so presigned S3 and GCS
+  locations work
+- The first snapshot load is serialised, so a second thread cannot observe an
+  absent snapshot mid-load
+- `vulnq-mine epss` fetches an explicitly requested date exactly rather than
+  silently substituting a nearby day, and its walk-back now also survives a
+  corrupt file rather than only a missing one
+
+### Fixed
+- The CLI built a `Configuration` directly and so never read the environment,
+  leaving `GITHUB_TOKEN` and `NVD_API_KEY` unused for every command-line and
+  subprocess caller
+- Enrichment applies to the VulnerableCode-only query path, which returned
+  before consolidation and would otherwise have been skipped
+- `__version__` no longer disagrees with the packaged version, which matters
+  now that results carry provenance
+
 ## [1.0.2] - 2025-11-05
 
 ### Fixed

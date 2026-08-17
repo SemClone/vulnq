@@ -121,7 +121,77 @@ export VULNQ_CACHE_TTL="3600"  # seconds
 
 # Rate limiting
 export VULNQ_MAX_CONCURRENT="5"
+
+# Exploitability snapshots (see below)
+export VULNQ_KEV_SNAPSHOT="/srv/snapshots"
+export VULNQ_EPSS_SNAPSHOT="/srv/snapshots"
+export VULNQ_SNAPSHOT_MAX_AGE_DAYS="7"   # optional; unset means age is advisory
 ```
+
+## Exploitability Enrichment
+
+vulnq answers "is this package vulnerable, how badly, and is there a fix." KEV
+and EPSS add the other half: is anyone exploiting it, and how likely is that to
+change.
+
+- **CISA KEV** marks CVEs that are known to be exploited in the wild, with the
+  date they were catalogued, whether ransomware campaigns use them, and the
+  required remediation action.
+- **FIRST EPSS** gives the probability of exploitation in the next 30 days,
+  which is what makes a backlog of hundreds of medium-severity CVEs rankable.
+
+Both are static reference files joined on the CVE id, not per-query APIs. Mine
+them once and point a fleet of workers at the result:
+
+```bash
+# Mine snapshots (an operational job - schedule this yourself)
+vulnq-mine kev --out /srv/snapshots
+vulnq-mine epss --out /srv/snapshots
+
+# Query against them
+export VULNQ_KEV_SNAPSHOT=/srv/snapshots
+export VULNQ_EPSS_SNAPSHOT=/srv/snapshots
+vulnq pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1
+```
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━┳━━━━━━━┳ ...
+┃ ID                  ┃ Severity ┃ CVSS ┃ KEV ┃  EPSS ┃ ...
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━╇━━━━━━━╇ ...
+│ GHSA-jfh8-c2jp-5v3q │ CRITICAL │  9.0 │ YES │ 1.000 │ ...
+
+cisa-kev: 2026.08.14, 0.2d old
+first-epss: 2026-08-16, 0.2d old
+```
+
+`vulnq` reads snapshots; it does not schedule mining, hold credentials, or
+publish anywhere. Those are deployment policy, so installing `vulnq` never
+inherits a publishing dependency. A snapshot location may be a file, a
+directory, or a URL.
+
+### Unknown is not a negative
+
+A missing, unreachable, or stale snapshot leaves `known_exploited` and
+`epss_score` as `null` — never `false` or `0.0`. Zero is a real EPSS score and
+`false` is a real KEV verdict, so a consumer that reads either out of a failed
+join would confidently under-rate a live threat. Check `enrichment` in the JSON
+envelope to see which snapshot a result was scored against and how old it was:
+
+```json
+"enrichment": {
+  "cisa-kev": {"available": true, "version": "2026.08.14", "age_seconds": 23.8, "stale": false},
+  "first-epss": {"available": true, "version": "2026-08-16", "record_count": 360399}
+}
+```
+
+Advisories with no CVE alias (GHSA-only) can never be joined and stay `null`.
+
+### Attribution
+
+CISA KEV is a US Government work in the public domain. FIRST requests
+attribution when EPSS data is used in a product — confirm placement before
+customer delivery, and confirm FIRST's terms separately if you republish a
+snapshot rather than consuming it privately.
 
 ## Integration with SEMCL.ONE
 

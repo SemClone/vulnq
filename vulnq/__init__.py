@@ -3,11 +3,23 @@
 A lightweight, multi-source vulnerability query tool for software composition analysis.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __author__ = "Oscar Valenzuela B."
 __email__ = "oscar.valenzuela.b@gmail.com"
 
 from .core import VulnerabilityQuery
-from .models import QueryResult, Vulnerability
+from .enrichment import EPSSReader, KEVReader, Snapshot, mine_epss, mine_kev
+from .models import QueryResult, SnapshotProvenance, Vulnerability
 
-__all__ = ["VulnerabilityQuery", "Vulnerability", "QueryResult", "__version__"]
+__all__ = [
+    "VulnerabilityQuery",
+    "Vulnerability",
+    "QueryResult",
+    "SnapshotProvenance",
+    "KEVReader",
+    "EPSSReader",
+    "Snapshot",
+    "mine_kev",
+    "mine_epss",
+    "__version__",
+]

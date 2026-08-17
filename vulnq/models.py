@@ -1,6 +1,6 @@
 """Data models for vulnq."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -58,6 +58,28 @@ class Vulnerability(BaseModel):
     cwe_ids: List[str] = Field(default_factory=list, description="CWE identifiers")
     aliases: List[str] = Field(default_factory=list, description="Alternative identifiers")
 
+    # Exploitability facts joined from published snapshots. None always means
+    # "unknown" - no snapshot, or no row for this CVE - and never "verified
+    # negative". A consumer that reads False or 0.0 out of a failed join will
+    # confidently under-rate a live threat.
+    known_exploited: Optional[bool] = Field(
+        None, description="Listed in the CISA KEV catalog (None if unknown)"
+    )
+    kev_date_added: Optional[date] = Field(None, description="Date added to the CISA KEV catalog")
+    kev_known_ransomware: Optional[bool] = Field(
+        None, description="Known use in ransomware campaigns per CISA KEV"
+    )
+    kev_required_action: Optional[str] = Field(
+        None, description="Remediation action required by CISA KEV"
+    )
+    epss_score: Optional[float] = Field(
+        None, description="FIRST EPSS probability of exploitation (None if unknown)"
+    )
+    epss_percentile: Optional[float] = Field(
+        None, description="FIRST EPSS percentile as published, never recomputed"
+    )
+    epss_score_date: Optional[date] = Field(None, description="Date of the EPSS score snapshot")
+
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat() if v else None}
 
@@ -72,6 +94,25 @@ class PackageInfo(BaseModel):
     cpe: Optional[str] = Field(None, description="CPE string")
 
 
+class SnapshotProvenance(BaseModel):
+    """Provenance for a snapshot joined against during enrichment.
+
+    Recorded per enrichment source so a caller can reproduce or explain an
+    answer later, and can tell a fresh join from a stale or failed one.
+    """
+
+    source: str = Field(..., description="Snapshot source identifier")
+    available: bool = Field(..., description="Whether the snapshot was loaded")
+    version: Optional[str] = Field(
+        None, description="Catalog version or score date the join ran against"
+    )
+    fetched_at: Optional[datetime] = Field(None, description="When the snapshot was mined")
+    age_seconds: Optional[float] = Field(None, description="Snapshot age at query time")
+    stale: bool = Field(False, description="Age exceeded the configured maximum")
+    record_count: Optional[int] = Field(None, description="Rows in the snapshot")
+    error: Optional[str] = Field(None, description="Why the snapshot was unavailable")
+
+
 class QueryResult(BaseModel):
     """Query result model."""
 
@@ -82,6 +123,9 @@ class QueryResult(BaseModel):
         default_factory=list, description="Found vulnerabilities"
     )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Query metadata")
+    enrichment: Dict[str, SnapshotProvenance] = Field(
+        default_factory=dict, description="Snapshot provenance keyed by source"
+    )
     query_time: datetime = Field(default_factory=datetime.utcnow, description="Query timestamp")
     sources_checked: List[VulnerabilitySource] = Field(
         default_factory=list, description="Sources that were checked"
@@ -127,6 +171,19 @@ class Configuration(BaseModel):
     max_concurrent: int = Field(5, description="Max concurrent requests")
     timeout: int = Field(30, description="Request timeout in seconds")
     use_vulnerablecode: bool = Field(False, description="Use VulnerableCode as primary source")
+    kev_snapshot: Optional[str] = Field(
+        None, description="Path, directory, or URL of a published CISA KEV snapshot"
+    )
+    epss_snapshot: Optional[str] = Field(
+        None, description="Path, directory, or URL of a published FIRST EPSS snapshot"
+    )
+    snapshot_max_age_days: Optional[int] = Field(
+        None,
+        description=(
+            "Age past which a snapshot is refused rather than joined. "
+            "None reports age as advisory and still joins."
+        ),
+    )
     sources: List[VulnerabilitySource] = Field(
         default_factory=lambda: [
             VulnerabilitySource.OSV,

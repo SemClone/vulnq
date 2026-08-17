@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .clients import GitHubClient, NVDClient, OSVClient, RateLimitError, VulnerableCodeClient
+from .enrichment import Enricher, build_enricher
 from .models import (
     Configuration,
     IdentifierType,
@@ -29,12 +30,20 @@ class VulnerabilityQuery:
             config: Configuration object
             verbose: Enable verbose output
         """
-        self.config = config or self._load_config()
+        self.config = config or self.load_config()
         self.verbose = verbose
         self._clients = self._initialize_clients()
+        # Built once and reused: the readers hold their snapshots resident, and
+        # the EPSS snapshot is far too large to re-read per query.
+        self._enricher: Optional[Enricher] = build_enricher(self.config, verbose=verbose)
 
-    def _load_config(self) -> Configuration:
-        """Load configuration from environment variables."""
+    @staticmethod
+    def load_config() -> Configuration:
+        """Load configuration from environment variables.
+
+        Public so callers that build a configuration themselves - the CLI
+        included - can start from the environment instead of bypassing it.
+        """
         config = Configuration()
 
         # Load API keys from environment
@@ -44,6 +53,24 @@ class VulnerabilityQuery:
         # Check if VulnerableCode should be used
         if os.environ.get("USE_VULNERABLECODE", "").lower() == "true":
             config.use_vulnerablecode = True
+
+        # Snapshot locations come from the environment because the primary
+        # integration path is a subprocess call - a caller running
+        # "vulnq <purl> --format json" cannot hand over a Configuration object.
+        config.kev_snapshot = os.environ.get("VULNQ_KEV_SNAPSHOT") or None
+        config.epss_snapshot = os.environ.get("VULNQ_EPSS_SNAPSHOT") or None
+
+        max_age = os.environ.get("VULNQ_SNAPSHOT_MAX_AGE_DAYS")
+        if max_age:
+            try:
+                config.snapshot_max_age_days = int(max_age)
+            except ValueError as exc:
+                # Swallowing this would silently disable a freshness gate the
+                # operator believes is switched on, and a stale snapshot would
+                # then be trusted. Fail where it can be seen.
+                raise ValueError(
+                    f"VULNQ_SNAPSHOT_MAX_AGE_DAYS must be an integer, got {max_age!r}"
+                ) from exc
 
         return config
 
@@ -117,15 +144,20 @@ class VulnerabilityQuery:
             query_time=datetime.utcnow(),
         )
 
-        # If using VulnerableCode, query it and return
+        # If using VulnerableCode, query it; otherwise query all enabled
+        # sources in parallel and consolidate.
         if self.config.use_vulnerablecode:
-            return await self._query_vulnerablecode(identifier, id_type, package_info, result)
+            result = await self._query_vulnerablecode(identifier, id_type, package_info, result)
+        else:
+            vulnerabilities = await self._query_all_sources(
+                identifier, id_type, package_info, result
+            )
+            result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
 
-        # Otherwise, query all enabled sources in parallel
-        vulnerabilities = await self._query_all_sources(identifier, id_type, package_info, result)
-
-        # Deduplicate and consolidate vulnerabilities
-        result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
+        # Enrich after both branches converge, so a CVE found by three sources
+        # is stamped once and the VulnerableCode-only path is not skipped.
+        if self._enricher:
+            result = self._enricher.enrich(result)
 
         return result
 
