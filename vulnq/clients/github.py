@@ -182,6 +182,7 @@ class GitHubClient(BaseClient):
 
         vulnerabilities = []
         vulns = response["data"].get("securityVulnerabilities", {}).get("nodes", [])
+        parse_failures = 0
 
         for vuln_data in vulns:
             try:
@@ -189,13 +190,17 @@ class GitHubClient(BaseClient):
                 if vuln:
                     vulnerabilities.append(vuln)
             except Exception as e:
+                # Counted, not just skipped. A returned None means the record
+                # legitimately does not apply - a version outside the affected
+                # range - and must stay distinct from a record that broke.
+                parse_failures += 1
                 if self.verbose:
                     print(f"Error parsing GitHub vulnerability: {e}")
                 continue
 
-        # Every record present but none usable means the response shape changed,
-        # not that the package is clean.
-        if vulns and not vulnerabilities:
+        # Every record failing to parse means the response shape changed, not
+        # that the package is clean.
+        if vulns and parse_failures == len(vulns):
             raise RuntimeError(f"GitHub returned {len(vulns)} advisories but none could be parsed")
 
         return vulnerabilities

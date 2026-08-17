@@ -62,20 +62,28 @@ class OSVClient(BaseClient):
         """
         vulnerabilities = []
         vulns = response.get("vulns", [])
+        parse_failures = 0
 
         for vuln_data in vulns:
             try:
                 vuln = self._parse_vulnerability(vuln_data)
                 if vuln:
                     vulnerabilities.append(vuln)
+                else:
+                    # _parse_vulnerability returns None only for a record with
+                    # no id, which is malformed rather than inapplicable. OSV
+                    # has no version filtering here, so unlike the GitHub
+                    # client a None is always a failure.
+                    parse_failures += 1
             except Exception as e:
+                parse_failures += 1
                 if self.verbose:
                     print(f"Error parsing OSV vulnerability: {e}")
                 continue
 
-        # Every record present but none usable means the response shape
-        # changed, not that the package is clean.
-        if vulns and not vulnerabilities:
+        # Every record failing to parse means the response shape changed, not
+        # that the package is clean.
+        if vulns and parse_failures == len(vulns):
             raise RuntimeError(f"OSV returned {len(vulns)} records but none could be parsed")
 
         return vulnerabilities

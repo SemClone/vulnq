@@ -361,3 +361,28 @@ class TestNVDMappings:
             ._purl_to_cpe("pkg:npm/express@4.17.1")
             .startswith("cpe:2.3:a:openjsf:express")
         )
+
+    def test_records_that_do_not_apply_are_not_a_failure(self, monkeypatch):
+        """A record parsed to None is "does not apply", not a shape change.
+
+        Guards a trap in the all-records-failed check: version filtering
+        legitimately discards records, and treating that as a broken response
+        would report a clean package as an error.
+        """
+
+        async def no_session(self):
+            return None
+
+        async def not_applicable(self, method, url, **kwargs):
+            # Well-formed nodes that _parse_vulnerability returns None for.
+            return {"data": {"securityVulnerabilities": {"nodes": [{}, {}]}}}
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient.start_session", no_session)
+        monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", not_applicable)
+
+        result = engine(VulnerabilitySource.GITHUB).query(PURL)
+
+        assert result.sources_checked == [VulnerabilitySource.GITHUB]
+        assert result.is_conclusive is True
+        assert result.errors == []
