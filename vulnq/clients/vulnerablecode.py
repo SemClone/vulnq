@@ -4,7 +4,7 @@ import urllib.parse
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class VulnerableCodeClient(BaseClient):
@@ -35,27 +35,24 @@ class VulnerableCodeClient(BaseClient):
         encoded_purl = urllib.parse.quote(purl, safe="")
         url = f"{self.base_url}/packages/?purl={encoded_purl}"
 
-        try:
-            response = await self._make_request("GET", url)
-            return self._parse_response(response, purl)
-        except Exception as e:
-            if self.verbose:
-                print(f"VulnerableCode query failed for {purl}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request("GET", url)
+        return self._parse_response(response, purl)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
-        Note: VulnerableCode doesn't directly support CPE queries.
+        Note: VulnerableCode is keyed by PURL.
 
         Args:
             cpe: CPE string
 
-        Returns:
-            Empty list (VulnerableCode uses PURLs)
+        Raises:
+            UnsupportedQueryError: Always; VulnerableCode has no CPE lookup
         """
-        # VulnerableCode doesn't support CPE queries directly
-        return []
+        raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
 
     def _parse_response(self, response: Dict[str, Any], purl: str) -> List[Vulnerability]:
         """Parse VulnerableCode API response into Vulnerability objects.

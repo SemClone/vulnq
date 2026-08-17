@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class GitHubClient(BaseClient):
@@ -98,32 +98,30 @@ class GitHubClient(BaseClient):
 
         variables = {"ecosystem": gh_ecosystem, "package": name}
 
-        try:
-            response = await self._make_request(
-                "POST",
-                self.base_url,
-                json={"query": query, "variables": variables},
-                headers=self._get_headers(),
-            )
-            return self._parse_response(response, version)
-        except Exception as e:
-            if self.verbose:
-                print(f"GitHub query failed for {purl}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request(
+            "POST",
+            self.base_url,
+            json={"query": query, "variables": variables},
+            headers=self._get_headers(),
+        )
+        return self._parse_response(response, version)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
-        Note: GitHub doesn't directly support CPE queries.
+        Note: the GitHub Advisory Database is keyed by ecosystem and package
+        name, with no CPE lookup.
 
         Args:
             cpe: CPE string
 
-        Returns:
-            Empty list (GitHub doesn't support CPE)
+        Raises:
+            UnsupportedQueryError: Always; GitHub has no CPE lookup
         """
-        # GitHub doesn't support CPE queries directly
-        return []
+        raise UnsupportedQueryError("GitHub Advisory Database cannot be queried by CPE; use a PURL")
 
     def _parse_purl(self, purl: str) -> tuple:
         """Parse PURL into components.

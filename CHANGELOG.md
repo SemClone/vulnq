@@ -5,6 +5,32 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-17
+
+### Fixed
+- Client exceptions were swallowed and turned into an empty list, so a network
+  failure, an HTTP error, or a rate limit was indistinguishable from a package
+  with no known vulnerabilities. They now propagate and are reported
+- `sources_checked` listed sources that had failed or could not be queried at
+  all. It now means "this source ran and returned an answer"
+- The `RateLimitError` branch in the query engine was unreachable, because no
+  client ever let one escape. Hitting a rate limit read as a clean scan
+
+### Added
+- `sources_skipped` on `QueryResult`, mapping a source to why it could not be
+  asked. A source that structurally cannot answer an identifier — OSV, GitHub
+  and VulnerableCode take PURLs but not CPEs; NVD takes CPEs and only the PURLs
+  it can convert — previously returned an empty list and was counted as checked
+- `QueryResult.is_conclusive`, true when at least one source ran. An empty
+  result is only meaningful when it is true
+- `UnsupportedQueryError`, raised by a client that cannot be asked a given
+  identifier, as distinct from one that was asked and failed
+
+### Changed
+- The CLI exits 1 when no source answered a query, and says so in the output.
+  Findings themselves are still reported through the output rather than the
+  exit code; this is reserved for a question that went unanswered
+
 ## [1.2.0] - 2026-08-17
 
 ### Removed - BREAKING

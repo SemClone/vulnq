@@ -6,7 +6,14 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .clients import GitHubClient, NVDClient, OSVClient, RateLimitError, VulnerableCodeClient
+from .clients import (
+    GitHubClient,
+    NVDClient,
+    OSVClient,
+    RateLimitError,
+    UnsupportedQueryError,
+    VulnerableCodeClient,
+)
 from .enrichment import Enricher, build_enricher
 from .models import (
     Configuration,
@@ -258,8 +265,13 @@ class VulnerabilityQuery:
             result.vulnerabilities = vulnerabilities
             result.sources_checked.append(VulnerabilitySource.VULNERABLECODE)
 
+        except UnsupportedQueryError as e:
+            # Cannot be asked, as opposed to asked and broken.
+            result.sources_skipped[VulnerabilitySource.VULNERABLECODE.value] = str(e)
+        except RateLimitError:
+            result.errors.append("vulnerablecode: Rate limit exceeded")
         except Exception as e:
-            result.errors.append(f"VulnerableCode: {str(e)}")
+            result.errors.append(f"vulnerablecode: {str(e)}")
             if self.verbose:
                 print(f"VulnerableCode error: {e}")
         finally:
@@ -323,13 +335,18 @@ class VulnerabilityQuery:
             source = source_map[id(task)]
 
             if isinstance(task_result, Exception):
-                if isinstance(task_result, RateLimitError):
+                if isinstance(task_result, UnsupportedQueryError):
+                    # Nothing went wrong; this source simply cannot be asked
+                    # this question. Kept out of errors so a genuine failure
+                    # stays visible among them.
+                    result.sources_skipped[source.value] = str(task_result)
+                elif isinstance(task_result, RateLimitError):
                     result.errors.append(f"{source.value}: Rate limit exceeded")
                 else:
                     result.errors.append(f"{source.value}: {str(task_result)}")
 
                 if self.verbose:
-                    print(f"Error from {source.value}: {task_result}")
+                    print(f"{source.value} did not answer: {task_result}")
             else:
                 all_vulnerabilities.extend(task_result)
                 result.sources_checked.append(source)

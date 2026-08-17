@@ -16,6 +16,18 @@ class RateLimitError(Exception):
     pass
 
 
+class UnsupportedQueryError(Exception):
+    """Raised when a source structurally cannot answer a given identifier.
+
+    Distinct from a failure: nothing went wrong, the question simply cannot be
+    put to this source. OSV and GitHub take PURLs but not CPEs; NVD takes CPEs
+    and only the PURLs it can convert. Returning an empty list for these made
+    "cannot ask" indistinguishable from "asked, found nothing".
+    """
+
+    pass
+
+
 class BaseClient(ABC):
     """Abstract base class for vulnerability API clients."""
 

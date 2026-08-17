@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class NVDClient(BaseClient):
@@ -44,9 +44,12 @@ class NVDClient(BaseClient):
         """
         # Try to convert PURL to CPE
         cpe = self._purl_to_cpe(purl)
-        if cpe:
-            return await self.query_cpe(cpe)
-        return []
+        if not cpe:
+            # NVD is CPE-keyed. An ecosystem with no CPE mapping cannot be
+            # asked at all, which is not the same as being asked and coming
+            # back clean.
+            raise UnsupportedQueryError(f"NVD cannot resolve {purl} to a CPE")
+        return await self.query_cpe(cpe)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -63,15 +66,13 @@ class NVDClient(BaseClient):
 
         params = {"cpeName": cpe, "resultsPerPage": 100}
 
-        try:
-            response = await self._make_request(
-                "GET", self.base_url, params=params, headers=self._get_headers()
-            )
-            return self._parse_response(response)
-        except Exception as e:
-            if self.verbose:
-                print(f"NVD query failed for {cpe}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request(
+            "GET", self.base_url, params=params, headers=self._get_headers()
+        )
+        return self._parse_response(response)
 
     def _purl_to_cpe(self, purl: str) -> Optional[str]:
         """Convert PURL to CPE if possible.

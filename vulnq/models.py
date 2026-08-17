@@ -131,7 +131,11 @@ class QueryResult(BaseModel):
     )
     query_time: datetime = Field(default_factory=datetime.utcnow, description="Query timestamp")
     sources_checked: List[VulnerabilitySource] = Field(
-        default_factory=list, description="Sources that were checked"
+        default_factory=list, description="Sources that ran and returned an answer"
+    )
+    sources_skipped: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Sources that could not be asked, mapped to why",
     )
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
 
@@ -139,6 +143,17 @@ class QueryResult(BaseModel):
     def vulnerability_count(self) -> int:
         """Get total vulnerability count."""
         return len(self.vulnerabilities)
+
+    @property
+    def is_conclusive(self) -> bool:
+        """Whether any source actually ran and answered.
+
+        An empty result is only meaningful when this is True. If no source
+        could be asked - every one unsupported for this identifier, or every
+        one failing - then zero vulnerabilities means "nobody looked", not
+        "nothing found", and must not be read as a clean scan.
+        """
+        return bool(self.sources_checked)
 
     @property
     def critical_count(self) -> int:

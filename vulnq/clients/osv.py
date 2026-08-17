@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
-from .base import BaseClient
+from .base import BaseClient, UnsupportedQueryError
 
 
 class OSVClient(BaseClient):
@@ -32,28 +32,24 @@ class OSVClient(BaseClient):
         url = f"{self.base_url}/query"
         data = {"package": {"purl": purl}}
 
-        try:
-            response = await self._make_request("POST", url, json=data)
-            return self._parse_response(response)
-        except Exception as e:
-            if self.verbose:
-                print(f"OSV query failed for {purl}: {e}")
-            return []
+        # Failures propagate: the caller records them as errors and omits the
+        # source from sources_checked. Swallowing them here made an outage
+        # indistinguishable from a package with no known vulnerabilities.
+        response = await self._make_request("POST", url, json=data)
+        return self._parse_response(response)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
-        Note: OSV doesn't directly support CPE queries.
-        This method returns an empty list.
+        Note: OSV is keyed by PURL and has no CPE lookup.
 
         Args:
             cpe: CPE string
 
-        Returns:
-            Empty list (OSV doesn't support CPE)
+        Raises:
+            UnsupportedQueryError: Always; OSV is a PURL-keyed database
         """
-        # OSV doesn't support CPE queries directly
-        return []
+        raise UnsupportedQueryError("OSV cannot be queried by CPE; use a PURL")
 
     def _parse_response(self, response: Dict[str, Any]) -> List[Vulnerability]:
         """Parse OSV API response into Vulnerability objects.
