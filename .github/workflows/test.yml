@@ -17,7 +17,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.13"]
+        # pyproject declares support from 3.8, but only 3.13 was ever run, so
+        # a 3.8-only failure sat in main unnoticed: asyncio.Semaphore bound to
+        # the current event loop before 3.10, which broke client construction
+        # for any caller that had already used asyncio.run(). Test the floor
+        # and the ceiling of what is claimed, plus a middle version.
+        python-version: ["3.8", "3.11", "3.13"]
+        exclude:
+          # 3.8 has no macOS arm64 build on GitHub's runners.
+          - os: macos-latest
+            python-version: "3.8"
 
     steps:
     - uses: actions/checkout@v7

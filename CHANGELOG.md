@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   about it: a kernel CPE returned 100 of 6332 as a complete answer. NVD's rate
   limits make paging a query of that size impractical, so the shortfall is
   reported as an incomplete answer instead
+- Constructing any client raised `RuntimeError: There is no current event
+  loop` on Python 3.8 and 3.9 if the caller had already used `asyncio.run()`,
+  because the concurrency semaphore bound to the current loop at construction.
+  An async application integrating vulnq could not build the engine at all.
+  The semaphore is now created inside the running loop, and rebuilt when the
+  loop changes, so a client reused across queries no longer holds one bound to
+  a closed loop
 
 ### Added
 - `Vulnerability.version_match`, recording whether the queried version was
@@ -78,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acceptable only when it is visible as such
 - The CLI printed `errors` under a "Warnings" heading. Errors are now labelled
   as errors, with incomplete answers listed separately
+- CI runs the test suite on Python 3.8 and 3.11 as well as 3.13. `pyproject`
+  has claimed 3.8 support throughout, but only 3.13 was ever exercised, which
+  is how the event-loop defect above stayed hidden
 
 ## [1.3.0] - 2026-08-17
 

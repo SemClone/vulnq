@@ -52,12 +52,40 @@ class BaseClient(ABC):
         self.max_retries = max_retries
         self.verbose = verbose
         self.session: Optional[aiohttp.ClientSession] = None
-        self._semaphore = asyncio.Semaphore(5)  # Limit concurrent requests
+        # Built on first use rather than here. Before Python 3.10 a Semaphore
+        # binds to the current event loop at construction, so constructing a
+        # client outside a running loop raised "there is no current event
+        # loop" - which any caller that had already used asyncio.run() hit -
+        # and a client reused across loops kept a semaphore bound to a closed
+        # one.
+        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._semaphore_loop: Optional[asyncio.AbstractEventLoop] = None
         # Populated per query with records the source returned but this client
         # could not turn into a finding. Below the all-records-failed threshold
         # those used to disappear into a verbose print, so a result short a few
         # advisories was indistinguishable from a complete one.
         self.parse_warnings: List[str] = []
+
+    def _concurrency_guard(self) -> asyncio.Semaphore:
+        """Return a semaphore bound to the loop currently running.
+
+        Called from inside the loop, so there is always one to bind to, and
+        rebuilt when the loop changes because the engine creates a fresh loop
+        per query while reusing its clients.
+
+        Returns:
+            The semaphore limiting concurrent requests for this client
+        """
+        try:
+            loop: Optional[asyncio.AbstractEventLoop] = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = None
+
+        if self._semaphore is None or self._semaphore_loop is not loop:
+            self._semaphore = asyncio.Semaphore(5)
+            self._semaphore_loop = loop
+
+        return self._semaphore
 
     def _begin_query(self) -> None:
         """Clear per-query state before a new lookup.
@@ -166,7 +194,7 @@ class BaseClient(ABC):
         if not self.session:
             await self.start_session()
 
-        async with self._semaphore:  # Rate limiting
+        async with self._concurrency_guard():  # Rate limiting
             last_error = None
 
             for attempt in range(self.max_retries):
