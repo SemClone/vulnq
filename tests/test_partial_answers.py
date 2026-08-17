@@ -249,3 +249,107 @@ class TestVersionMatchIsRecorded:
         result = engine(VulnerabilitySource.OSV).query("pkg:npm/express")
 
         assert result.vulnerabilities[0].version_match == VersionMatch.NOT_EVALUATED
+
+
+class TestGitHubPagination:
+    """GitHub holds more advisories for some packages than one page can carry."""
+
+    def test_all_pages_are_fetched(self, monkeypatch, offline):
+        pages = [
+            {
+                "data": {
+                    "securityVulnerabilities": {
+                        "totalCount": 3,
+                        "pageInfo": {"hasNextPage": True, "endCursor": "c1"},
+                        "nodes": [
+                            {
+                                "advisory": {"ghsaId": "GHSA-1111-1111-1111", "summary": "a"},
+                                "vulnerableVersionRange": "< 5.0.0",
+                            },
+                            {
+                                "advisory": {"ghsaId": "GHSA-2222-2222-2222", "summary": "b"},
+                                "vulnerableVersionRange": "< 5.0.0",
+                            },
+                        ],
+                    }
+                }
+            },
+            {
+                "data": {
+                    "securityVulnerabilities": {
+                        "totalCount": 3,
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "advisory": {"ghsaId": "GHSA-3333-3333-3333", "summary": "c"},
+                                "vulnerableVersionRange": "< 5.0.0",
+                            }
+                        ],
+                    }
+                }
+            },
+        ]
+        cursors = []
+
+        async def paged(self, method, url, **kwargs):
+            cursors.append(kwargs["json"]["variables"]["after"])
+            return pages[len(cursors) - 1]
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", paged)
+        result = engine(VulnerabilitySource.GITHUB).query(PURL)
+
+        assert len(result.vulnerabilities) == 3
+        assert cursors == [None, "c1"]
+        assert result.warnings == []
+
+    def test_hitting_the_page_cap_is_reported_not_hidden(self, monkeypatch, offline):
+        """Stopping short must not pass for having fetched everything."""
+
+        async def endless(self, method, url, **kwargs):
+            return {
+                "data": {
+                    "securityVulnerabilities": {
+                        "totalCount": 10000,
+                        "pageInfo": {"hasNextPage": True, "endCursor": "next"},
+                        "nodes": [
+                            {
+                                "advisory": {"ghsaId": "GHSA-aaaa-bbbb-cccc", "summary": "a"},
+                                "vulnerableVersionRange": "< 5.0.0",
+                            }
+                        ],
+                    }
+                }
+            }
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", endless)
+        result = engine(VulnerabilitySource.GITHUB).query(PURL)
+
+        assert len(result.warnings) == 1
+        assert "of 10000 advisories" in result.warnings[0]
+
+    def test_a_missing_cursor_stops_the_loop(self, monkeypatch, offline):
+        """hasNextPage without a cursor must not spin for MAX_PAGES."""
+        calls = []
+
+        async def truncated(self, method, url, **kwargs):
+            calls.append(1)
+            return {
+                "data": {
+                    "securityVulnerabilities": {
+                        "totalCount": 1,
+                        "pageInfo": {"hasNextPage": True, "endCursor": None},
+                        "nodes": [
+                            {
+                                "advisory": {"ghsaId": "GHSA-aaaa-bbbb-cccc", "summary": "a"},
+                                "vulnerableVersionRange": "< 5.0.0",
+                            }
+                        ],
+                    }
+                }
+            }
+
+        monkeypatch.setattr("vulnq.clients.base.BaseClient._make_request", truncated)
+        result = engine(VulnerabilitySource.GITHUB).query(PURL)
+
+        assert len(calls) == 1
+        assert len(result.vulnerabilities) == 1

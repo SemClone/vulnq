@@ -53,6 +53,12 @@ _NAME_STYLE = {
     "pub": "name",
 }
 
+# Pages of 100 advisories to fetch before giving up. GitHub holds more than a
+# thousand for some packages, and stopping at the first page reported 27 of
+# 1324 as if that were all of them. Reaching this cap is reported as an
+# incomplete answer rather than passed off as a whole one.
+MAX_PAGES = 25
+
 
 class GitHubClient(BaseClient):
     """Client for GitHub Advisory Database."""
@@ -99,10 +105,19 @@ class GitHubClient(BaseClient):
                 f"GitHub Advisory Database has no ecosystem mapping for '{ecosystem}'"
             )
 
-        # Build GraphQL query
+        # Build GraphQL query. totalCount and pageInfo are requested so a
+        # package with more advisories than one page can hold is paged through
+        # rather than cut off at 100 with nothing said about it.
         query = """
-        query($ecosystem: SecurityAdvisoryEcosystem, $package: String) {
-          securityVulnerabilities(first: 100, ecosystem: $ecosystem, package: $package) {
+        query($ecosystem: SecurityAdvisoryEcosystem, $package: String, $after: String) {
+          securityVulnerabilities(
+            first: 100, ecosystem: $ecosystem, package: $package, after: $after
+          ) {
+            totalCount
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               advisory {
                 ghsaId
@@ -137,18 +152,43 @@ class GitHubClient(BaseClient):
         }
         """
 
-        variables = {"ecosystem": gh_ecosystem, "package": name}
+        nodes: List[Dict[str, Any]] = []
+        total_count: Optional[int] = None
+        cursor: Optional[str] = None
 
-        # Failures propagate: the caller records them as errors and omits the
-        # source from sources_checked. Swallowing them here made an outage
-        # indistinguishable from a package with no known vulnerabilities.
-        response = await self._make_request(
-            "POST",
-            self.base_url,
-            json={"query": query, "variables": variables},
-            headers=self._get_headers(),
-        )
-        return self._parse_response(response, version, ecosystem)
+        for _ in range(MAX_PAGES):
+            variables = {"ecosystem": gh_ecosystem, "package": name, "after": cursor}
+
+            # Failures propagate: the caller records them as errors and omits
+            # the source from sources_checked. Swallowing them here made an
+            # outage indistinguishable from a package with no known
+            # vulnerabilities.
+            response = await self._make_request(
+                "POST",
+                self.base_url,
+                json={"query": query, "variables": variables},
+                headers=self._get_headers(),
+            )
+
+            connection = self._connection(response)
+            nodes.extend(connection.get("nodes") or [])
+            if total_count is None:
+                total_count = connection.get("totalCount")
+
+            page_info = connection.get("pageInfo") or {}
+            cursor = page_info.get("endCursor")
+            if not page_info.get("hasNextPage") or not cursor:
+                break
+
+        # A short list that looks complete is the failure this client keeps
+        # being bitten by. If the page cap stopped us, say how much is missing.
+        if total_count is not None and len(nodes) < total_count:
+            self.parse_warnings.append(
+                f"github returned only {len(nodes)} of {total_count} advisories for {name}; "
+                f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
+            )
+
+        return self._parse_nodes(nodes, version, ecosystem)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -217,21 +257,18 @@ class GitHubClient(BaseClient):
 
         return parsed.type, name, parsed.version
 
-    def _parse_response(
-        self,
-        response: Dict[str, Any],
-        target_version: Optional[str],
-        ecosystem: Optional[str] = None,
-    ) -> List[Vulnerability]:
-        """Parse GitHub GraphQL response into Vulnerability objects.
+    def _connection(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate one GraphQL page and return its connection object.
 
         Args:
-            response: Raw API response
-            target_version: Specific version to check (optional)
-            ecosystem: PURL type, used to order versions correctly
+            response: Raw API response for a single page
 
         Returns:
-            List of Vulnerability objects
+            The securityVulnerabilities connection
+
+        Raises:
+            RateLimitError: If GitHub refused the request for rate limiting
+            RuntimeError: If the response carries errors or no data
         """
         # GraphQL reports failures - including rate limiting - as HTTP 200 with
         # an errors array and, when the request failed before execution, no
@@ -251,8 +288,47 @@ class GitHubClient(BaseClient):
         if "data" not in response or response.get("data") is None:
             raise RuntimeError("GitHub GraphQL response contained no data")
 
+        return response["data"].get("securityVulnerabilities") or {}
+
+    def _parse_response(
+        self,
+        response: Dict[str, Any],
+        target_version: Optional[str],
+        ecosystem: Optional[str] = None,
+    ) -> List[Vulnerability]:
+        """Parse a single-page GitHub GraphQL response.
+
+        Args:
+            response: Raw API response
+            target_version: Specific version to check (optional)
+            ecosystem: PURL type, used to order versions correctly
+
+        Returns:
+            List of Vulnerability objects
+        """
+        connection = self._connection(response)
+        return self._parse_nodes(connection.get("nodes") or [], target_version, ecosystem)
+
+    def _parse_nodes(
+        self,
+        vulns: List[Dict[str, Any]],
+        target_version: Optional[str],
+        ecosystem: Optional[str] = None,
+    ) -> List[Vulnerability]:
+        """Turn advisory nodes into Vulnerability objects.
+
+        Args:
+            vulns: Advisory nodes, possibly gathered across several pages
+            target_version: Specific version to check (optional)
+            ecosystem: PURL type, used to order versions correctly
+
+        Returns:
+            List of Vulnerability objects
+
+        Raises:
+            RuntimeError: If records were returned and none could be parsed
+        """
         vulnerabilities = []
-        vulns = response["data"].get("securityVulnerabilities", {}).get("nodes", [])
         parse_failures = 0
         last_error = ""
 

@@ -19,10 +19,15 @@ and a range we cannot parse is not evidence of safety.
 """
 
 import re
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 # Ecosystems whose versions follow PEP 440 rather than semver.
 _PEP440_ECOSYSTEMS = {"pypi", "pip"}
+
+# RubyGems orders by digit/letter segments, not by semver pre-release rules.
+# Routing it through the semver comparator compared "pre2" and "pre12" as whole
+# strings, which reversed them and dropped advisories that did apply.
+_GEM_ECOSYSTEMS = {"gem", "rubygems"}
 
 # Maven orders qualifiers by rank rather than alphabetically, so "1.0-rc1"
 # precedes "1.0" and "1.0-sp1" follows it. Taken from Maven's own
@@ -155,10 +160,16 @@ def _compare_semver(left: str, right: str) -> int:
     Raises:
         UnparseableVersion: If either version cannot be ordered
     """
-    # Build metadata never affects precedence, and has to go before the split
-    # so "1.0.0+build1" does not read as a pre-release of 1.0.0.
-    left_release, left_qualifier = _split_release(_strip_v_prefix(left).split("+")[0])
-    right_release, right_qualifier = _split_release(_strip_v_prefix(right).split("+")[0])
+    # Semver says build metadata never affects precedence, but several
+    # ecosystems carry meaning in it - "11.0.6+security-01" is the *patched*
+    # build of 11.0.6, and ignoring the suffix reported it as a confirmed
+    # match for "<= 11.0.6". Undecided is honest; the caller reports it as
+    # unconfirmed rather than dropping it.
+    if "+" in left or "+" in right:
+        raise UnparseableVersion(f"build metadata is not orderable: {left} vs {right}")
+
+    left_release, left_qualifier = _split_release(_strip_v_prefix(left))
+    right_release, right_qualifier = _split_release(_strip_v_prefix(right))
 
     left_release, right_release = _pad(left_release, right_release)
     if left_release != right_release:
@@ -175,26 +186,35 @@ def _compare_semver(left: str, right: str) -> int:
     return _compare_prerelease_identifiers(left_qualifier.split("."), right_qualifier.split("."))
 
 
-def _maven_qualifier_key(qualifier: str) -> Tuple[int, str, int]:
+def _maven_qualifier_key(qualifier: str) -> Tuple[int, int]:
     """Rank a Maven qualifier so "rc1" sorts before the plain release.
 
     Args:
         qualifier: Qualifier text, possibly empty
 
     Returns:
-        Sort key of (rank, tie-break text, trailing number)
+        Sort key of (rank, trailing number)
+
+    Raises:
+        UnparseableVersion: If the qualifier is not one this table ranks
     """
     normalized = qualifier.lower().replace("-", "").replace("_", "")
     match = re.match(r"^([a-z]*)(\d*)$", normalized)
-    if match:
-        word, number = match.group(1), match.group(2)
-    else:
-        word, number = normalized, ""
+    if not match:
+        # Calendar-style and vendor qualifiers such as "Q1.2" or "liferay.9"
+        # do not fit this shape at all. Ranking them anyway meant comparing
+        # them as raw text, which put "q1.2" after "q1.12" and pushed real
+        # versions out of every range they belonged to.
+        raise UnparseableVersion(qualifier)
 
+    word, number = match.group(1), match.group(2)
     rank = _MAVEN_QUALIFIER_RANK.get(word)
     if rank is None:
-        return (_MAVEN_UNKNOWN_QUALIFIER_RANK, normalized, 0)
-    return (rank, "", int(number) if number else 0)
+        # An unrecognised word is undecidable rather than "ranks last". The
+        # caller turns that into an unconfirmed finding, which is reported;
+        # a guess here silently excluded advisories that did apply.
+        raise UnparseableVersion(qualifier)
+    return (rank, int(number) if number else 0)
 
 
 def _compare_maven(left: str, right: str) -> int:
@@ -217,11 +237,73 @@ def _compare_maven(left: str, right: str) -> int:
     if left_release != right_release:
         return -1 if left_release < right_release else 1
 
+    if left_qualifier == right_qualifier:
+        # Identical text needs no ranking, so an unrankable qualifier still
+        # compares equal to itself.
+        return 0
+
     left_key = _maven_qualifier_key(left_qualifier)
     right_key = _maven_qualifier_key(right_qualifier)
     if left_key == right_key:
         return 0
     return -1 if left_key < right_key else 1
+
+
+def _gem_segments(version: str) -> List[Any]:
+    """Split a RubyGems version into comparable segments.
+
+    Gem::Version tokenizes on runs of digits and runs of letters, so
+    "3.0.0.pre2" becomes [3, 0, 0, "pre", 2]. That is what makes "pre2" sort
+    before "pre12"; comparing the two as whole strings does the opposite.
+
+    Args:
+        version: Version string
+
+    Returns:
+        List of int and str segments
+
+    Raises:
+        UnparseableVersion: If the version contains no segments
+    """
+    segments: List[Any] = []
+    for token in re.findall(r"\d+|[A-Za-z]+", version):
+        segments.append(int(token) if token.isdigit() else token.lower())
+    if not segments:
+        raise UnparseableVersion(version)
+    return segments
+
+
+def _compare_gem(left: str, right: str) -> int:
+    """Compare two versions under RubyGems ordering.
+
+    Gem is not semver: it compares segment by segment, a letter segment ranks
+    below a numeric one, and missing trailing segments count as zero.
+
+    Args:
+        left: First version
+        right: Second version
+
+    Returns:
+        -1, 0, or 1
+
+    Raises:
+        UnparseableVersion: If either version cannot be ordered
+    """
+    left_segments = _gem_segments(_strip_v_prefix(left))
+    right_segments = _gem_segments(_strip_v_prefix(right))
+
+    for index in range(max(len(left_segments), len(right_segments))):
+        a: Any = left_segments[index] if index < len(left_segments) else 0
+        b: Any = right_segments[index] if index < len(right_segments) else 0
+        if a == b:
+            continue
+        a_is_text, b_is_text = isinstance(a, str), isinstance(b, str)
+        if a_is_text != b_is_text:
+            # A letter segment marks a pre-release, which precedes any number.
+            return -1 if a_is_text else 1
+        return -1 if a < b else 1
+
+    return 0
 
 
 def _compare_pep440(left: str, right: str) -> int:
@@ -273,6 +355,8 @@ def compare_versions(ecosystem: Optional[str], left: str, right: str) -> Optiona
             return _compare_pep440(left, right)
         if normalized == "maven":
             return _compare_maven(left, right)
+        if normalized in _GEM_ECOSYSTEMS:
+            return _compare_gem(left, right)
         return _compare_semver(left, right)
     except UnparseableVersion:
         return None

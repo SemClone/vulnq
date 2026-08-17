@@ -28,12 +28,19 @@ class TestSemverOrdering:
             ("5.0.0-alpha.1", "5.0.0-alpha.2", -1),
             # Numeric identifiers rank below alphanumeric ones.
             ("1.0.0-1", "1.0.0-alpha", -1),
-            # Build metadata never affects precedence.
-            ("1.0.0+build1", "1.0.0+build2", 0),
         ],
     )
     def test_ordering(self, left, right, expected):
         assert compare_versions("npm", left, right) == expected
+
+    def test_build_metadata_is_undecided(self):
+        """Semver ignores build metadata; several ecosystems do not.
+
+        "11.0.6+security-01" is the patched build of 11.0.6, so treating the
+        suffix as noise reported the fix as a confirmed match for "<= 11.0.6".
+        """
+        assert compare_versions("npm", "1.0.0+build1", "1.0.0+build2") is None
+        assert evaluate_range("golang", "11.0.6+security-01", ">= 11.0.0, <= 11.0.6") is None
 
     def test_go_v_prefix_is_stripped(self):
         """Go PURLs carry a "v" that GitHub's ranges do not."""
@@ -145,3 +152,64 @@ class TestRangeEvaluation:
     def test_pypi_range(self):
         assert evaluate_range("pypi", "3.2.1", ">= 3.2, < 3.2.13") is True
         assert evaluate_range("pypi", "4.0", ">= 3.2, < 3.2.13") is False
+
+
+class TestGemOrdering:
+    """RubyGems is not semver: it compares digit and letter segments."""
+
+    @pytest.mark.parametrize(
+        "left,right,expected",
+        [
+            # The whole point: as strings "pre2" sorts after "pre12".
+            ("3.0.0.pre2", "3.0.0.pre12", -1),
+            ("3.0.0.pre1", "3.0.0", -1),
+            ("1.2.4", "1.2.10", -1),
+            ("7.1.3.1", "7.1.3", 1),
+            ("1.0", "1.0.0", 0),
+            ("2.0.0.rc1", "2.0.0.rc2", -1),
+        ],
+    )
+    def test_ordering(self, left, right, expected):
+        assert compare_versions("gem", left, right) == expected
+
+    def test_prerelease_inside_a_prerelease_range(self):
+        """Reproduced live: avo 3.0.0.pre2 was dropped from two advisories."""
+        span = ">= 3.0.0.pre1, <= 3.0.0.pre12"
+        assert evaluate_range("gem", "3.0.0.pre2", span) is True
+        assert evaluate_range("gem", "3.0.0.pre13", span) is False
+
+    def test_ordinary_gem_ranges_still_decide(self):
+        assert evaluate_range("gem", "7.1.2", ">= 7.1.0, < 7.1.3.1") is True
+        assert evaluate_range("gem", "1.2.4", "< 1.2.4") is False
+
+
+class TestUnrankableQualifiersAreUndecided:
+    """A qualifier this module cannot rank must never be guessed at.
+
+    Ranking unknown Maven qualifiers by raw text put "q1.2" after "q1.12" and
+    silently excluded advisories that did apply - the exact false clean scan
+    the tool exists to prevent.
+    """
+
+    @pytest.mark.parametrize(
+        "version,vulnerable_range",
+        [
+            ("2024.Q1.2", ">= 2024.Q1.1, <= 2024.Q1.12"),
+            ("1.0.0-preview.99", "< 1.0.0-preview.100"),
+            ("4.21.0-liferay.9", "< 4.21.0-liferay.10"),
+            ("2025.Q2.10", ">= 2025.Q2.0, <= 2025.Q2.9"),
+            ("1.0-mysteryqualifier", "< 1.0-other"),
+        ],
+    )
+    def test_undecidable_rather_than_excluded(self, version, vulnerable_range):
+        assert evaluate_range("maven", version, vulnerable_range) is None
+
+    def test_known_maven_qualifiers_still_decide(self):
+        """The fix must not turn ordinary Maven queries into guesswork."""
+        assert evaluate_range("maven", "2.14.1", ">= 2.0-beta9, < 2.25.3") is True
+        assert evaluate_range("maven", "1.2.17", ">= 2.0-beta9, < 2.25.3") is False
+        assert evaluate_range("maven", "2.14.1", ">= 2.13.0, < 2.15.0") is True
+        assert evaluate_range("maven", "3.0.0-beta2", ">= 3.0.0-beta1, <= 3.0.0-beta3") is True
+
+    def test_an_identical_odd_qualifier_still_compares_equal(self):
+        assert compare_versions("maven", "2024.Q1.2", "2024.Q1.2") == 0

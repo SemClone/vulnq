@@ -157,9 +157,11 @@ An advisory whose range cannot be evaluated is **reported, not dropped**, and
 marked `[unconfirmed]` in the table. Dropping an advisory that might apply is
 the dangerous direction; over-reporting is acceptable only when it is visible.
 
-Maven `SNAPSHOT`/`sp` qualifier ordering and Go pseudo-versions are handled.
-Anything else that will not parse falls through to `unconfirmed` rather than
-being guessed at.
+Maven qualifier ranks (`alpha` < `beta` < `rc` < `snapshot` < release < `sp`),
+RubyGems digit/letter segments, and Go pseudo-versions are handled. Anything
+this cannot order confidently — an unrecognised Maven qualifier, a version
+carrying build metadata, a range grammar outside GitHub's — falls through to
+`unconfirmed` rather than being guessed at.
 
 ## Supported Identifier Formats
 

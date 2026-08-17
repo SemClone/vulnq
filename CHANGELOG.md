@@ -29,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NVD had no all-records-failed guard at all, so a response whose every record
   was unparseable came back as a clean scan. It now raises, as OSV and GitHub
   already did
+- GitHub answers were cut off at the first 100 advisories with nothing said
+  about it. `tensorflow` reported 27 of 1324. Results are now paged through,
+  and hitting the page cap is reported as an incomplete answer
+- Maven qualifiers the ranking table does not recognise — calendar versions
+  like `2024.Q1.2`, vendor suffixes like `4.21.0-liferay.9` — were ranked by
+  raw text, which sorted `q1.2` after `q1.12` and excluded versions that were
+  inside the range. `release.dxp.bom@2024.Q1.2` reported a clean scan against
+  ten applicable advisories. An unrankable qualifier is now undecidable, so
+  the advisory is reported as unconfirmed instead of dropped
+- RubyGems versions were compared with semver rules, but Gem tokenizes digit
+  and letter runs, so `pre2` sorted after `pre12`. `avo@3.0.0.pre2` was
+  dropped from two advisories it is affected by. Gem now has its own ordering
+- Build metadata was discarded as semver requires, but several ecosystems
+  carry meaning in it: `11.0.6+security-01` is the *patched* build of 11.0.6
+  and was reported as a confirmed match for `<= 11.0.6`. Versions carrying
+  build metadata are now undecidable rather than assumed equivalent
 
 ### Added
 - `Vulnerability.version_match`, recording whether the queried version was
