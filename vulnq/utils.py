@@ -84,6 +84,70 @@ def parse_identifier(identifier: str, id_type: IdentifierType) -> Optional[Packa
         return None
 
 
+# PEP 503 collapses any run of dot, hyphen and underscore to a single hyphen
+# and lowercases the result. PyPI is the identity authority here and resolves
+# every such spelling to one distribution.
+#
+# This deliberately goes further than the purl spec, whose pypi type folds
+# underscore and case but leaves the dot alone (its only dot rule is for sdist
+# and wheel filenames). So pkg:pypi/zope.interface is spec-canonical, and a
+# purl vulnq reports may not string-match one emitted by a spec-conformant
+# tool. PyPI treating the two as one package is the property that matters for
+# deduplicating findings, which is what this identity is for.
+_PEP503_SEPARATOR_RUN = re.compile(r"[-_.]+")
+
+
+def normalize_pypi_name(name: str) -> str:
+    """Return a PyPI distribution name in its PEP 503 normalized form.
+
+    Args:
+        name: Distribution name as written
+
+    Returns:
+        The canonical name PyPI compares against
+    """
+    return _PEP503_SEPARATOR_RUN.sub("-", name).lower()
+
+
+def canonical_purl(purl_string: str) -> str:
+    """Return a PURL in the form its ecosystem compares names in.
+
+    Only pkg:pypi is rewritten, and only to the PEP 503 rule, which is PyPI's
+    own. packageurl lowercases pypi names and folds underscores but leaves dots
+    alone, so without it zope.interface and zope_interface are one distribution
+    spelled two ways that produce two purls and two sets of records.
+
+    This is an identity rule, for reporting and comparison. Do not normalize
+    before querying a source. GitHub keys its advisory database by the
+    as-published PyPI name and folds case but not separators, so asking it
+    about products-pluggableauthservice instead of
+    products.pluggableauthservice drops three real advisories and reports the
+    source as checked.
+
+    Idempotent, and returns the input unchanged if it does not parse, so a
+    caller can normalize without having to first decide whether it is safe.
+
+    Args:
+        purl_string: PURL string as written
+
+    Returns:
+        The canonical PURL, or the input unchanged
+    """
+    try:
+        purl = PackageURL.from_string(purl_string)
+    except Exception:
+        return purl_string
+
+    if purl.type != "pypi" or not purl.name:
+        return purl_string
+
+    # Reserialize rather than comparing against purl.name and handing back the
+    # input. packageurl has already folded underscores and case by this point,
+    # so that comparison reports "nothing to do" for pkg:pypi/zope_interface
+    # and returns the underscore spelling untouched.
+    return str(purl._replace(name=normalize_pypi_name(purl.name)))
+
+
 def parse_purl(purl_string: str) -> Optional[PackageInfo]:
     """Parse a Package URL string.
 
@@ -94,12 +158,11 @@ def parse_purl(purl_string: str) -> Optional[PackageInfo]:
         PackageInfo object or None if parsing fails
     """
     try:
-        purl = PackageURL.from_string(purl_string)
-        return PackageInfo(
-            ecosystem=purl.type, name=purl.name, version=purl.version, purl=str(purl)
-        )
+        purl = PackageURL.from_string(canonical_purl(purl_string))
     except Exception:
         return None
+
+    return PackageInfo(ecosystem=purl.type, name=purl.name, version=purl.version, purl=str(purl))
 
 
 def parse_cpe(cpe_string: str) -> Optional[PackageInfo]:

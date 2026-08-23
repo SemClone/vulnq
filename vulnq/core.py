@@ -230,6 +230,11 @@ class VulnerabilityQuery:
             query_time=datetime.utcnow(),
         )
 
+        # The sources are asked the spelling that was given, not the PEP 503
+        # form. Normalization is an identity rule, not a transport one: GitHub
+        # keys GHSA by the as-published PyPI name and folds case but not dots,
+        # so asking it for plone-namedfile instead of plone.namedfile returns a
+        # confident zero. package_info carries the canonical name for identity.
         # If using VulnerableCode, query it; otherwise query all enabled
         # sources in parallel and consolidate.
         if self.config.use_vulnerablecode:

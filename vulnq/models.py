@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_serializer
 
 
 class Severity(str, Enum):
@@ -106,8 +106,20 @@ class Vulnerability(BaseModel):
     )
     epss_score_date: Optional[date] = Field(None, description="Date of the EPSS score snapshot")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat() if v else None}
+    @field_serializer("published_date", "modified_date", when_used="json")
+    def _serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """Emit timestamps the way this envelope has always emitted them.
+
+        Replaces a class-based Config with json_encoders, both of which go away
+        in pydantic v3. Pydantic's own default would be valid ISO 8601 but
+        spells UTC as "Z" where every release so far has written "+00:00",
+        which is a wire change consumers did not ask for.
+
+        json-mode only, matching the reach of the json_encoders it replaces.
+        A plain model_dump() still hands back real datetime objects, which is
+        what in-process callers have always got.
+        """
+        return value.isoformat() if value else None
 
 
 class PackageInfo(BaseModel):

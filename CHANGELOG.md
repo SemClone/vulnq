@@ -5,6 +5,44 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- PyPI names were not normalized per PEP 503. Dots were left alone where
+  underscores and case were folded, so `zope.interface` and `zope_interface`
+  named one distribution but reported two different purls. `package_info.name`
+  and `package_info.purl` now carry the canonical name for every legal
+  spelling, and `query` still echoes the string the caller passed.
+
+  Note this goes further than the purl spec, which folds underscore and case
+  for `pkg:pypi` but leaves the dot alone. A purl vulnq reports may therefore
+  not string-match one emitted by a spec-conformant tool. PyPI resolving every
+  spelling to one distribution is the property that matters for deduplicating
+  findings, which is what this identity is for.
+
+  Normalization is deliberately limited to identity: the sources are still
+  asked about the spelling they were given. Folding the dot before the query
+  is not safe, because GitHub keys its advisory database by the as-published
+  PyPI name and folds case but not separators.
+  `products.pluggableauthservice` holds three advisories where
+  `products-pluggableauthservice` holds none, so normalizing first would turn
+  those three into a clean scan with `github` still listed in
+  `sources_checked`.
+
+  Underscores are a separate matter and are unchanged here. packageurl folds
+  them while parsing, so the GitHub client, which builds its name from the
+  parsed purl, asks about `scikit-learn` for `pkg:pypi/scikit_learn`; OSV and
+  VulnerableCode pass the purl through and do see the underscore. That split
+  is the same before and after this release, and for GitHub the fold matches
+  what GHSA stores anyway.
+
+- `Vulnerability` carried a class-based `Config` with `json_encoders`. Both are
+  removed in pydantic v3, so the model would have stopped building on upgrade.
+  Timestamps now go through a `field_serializer` that keeps the existing
+  `+00:00` spelling, which pydantic's own default would have changed to `Z`.
+  `pydantic` is pinned below 3 until compatibility with it can be tested
+  against a real release.
+
 ## [1.4.0] - 2026-08-17
 
 ### Fixed
