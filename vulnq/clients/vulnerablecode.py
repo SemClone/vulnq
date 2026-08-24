@@ -15,9 +15,11 @@ class VulnerableCodeClient(BaseClient):
     @property
     def source(self) -> VulnerabilitySource:
         """Return the vulnerability source identifier."""
-        # VulnerableCode aggregates multiple sources
-        # We'll mark it as OSV since it's similar in nature
-        return VulnerabilitySource.OSV
+        # It aggregates other databases, but it is still the source that was
+        # asked and the one that answered. Labelling its findings as OSV
+        # contradicted sources_checked in the same envelope and credited data
+        # to a database that was never queried.
+        return VulnerabilitySource.VULNERABLECODE
 
     @property
     def base_url(self) -> str:

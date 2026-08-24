@@ -365,7 +365,14 @@ def main(
             # Filter by severity if requested
             if min_severity:
                 min_sev = Severity[min_severity.upper()]
-                result.vulnerabilities = result.filter_by_severity(min_sev)
+                result.vulnerabilities, withheld = result.filter_by_severity(min_sev)
+                if withheld:
+                    # A shortened list handed back with nothing said about it
+                    # reads as the whole answer.
+                    result.warnings.append(
+                        f"{withheld} finding(s) below {min_sev.value} were withheld by "
+                        "--min-severity. Unrated findings are always kept"
+                    )
 
             # Output results
             if format == "json":

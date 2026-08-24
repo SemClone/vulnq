@@ -16,6 +16,7 @@ from .clients import (
 )
 from .enrichment import Enricher, build_enricher
 from .models import (
+    SEVERITY_ORDER,
     Configuration,
     IdentifierType,
     PackageInfo,
@@ -473,16 +474,7 @@ class VulnerabilityQuery:
                 consolidated.append(merged)
 
         # Sort by severity and ID
-        severity_order = {
-            Severity.CRITICAL: 5,
-            Severity.HIGH: 4,
-            Severity.MEDIUM: 3,
-            Severity.LOW: 2,
-            Severity.NONE: 1,
-            Severity.UNKNOWN: 0,
-        }
-
-        consolidated.sort(key=lambda v: (-severity_order.get(v.severity, 0), v.id))
+        consolidated.sort(key=lambda v: (-SEVERITY_ORDER[v.severity], v.id))
 
         return consolidated
 

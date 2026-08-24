@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- OSV CVSS scores were invented. The client did not parse the vector: it
+  checked it for a handful of substrings and picked one of four hardcoded
+  numbers, ignoring attack vector, privileges required, user interaction and
+  scope entirely. `AV:L/AC:L/PR:H/UI:R/S:U/C:H/I:N/A:N` scores 4.2 and was
+  reported as 9.0 CRITICAL, because it contains `/C:H` and `/AC:L`. The number
+  sat in the same field as NVD's real scores, so anything sorting or gating on
+  it was acting on a value nobody computed. Base scores are now computed from
+  the vector per the CVSS 3.1 specification, checked against 235 published NVD
+  records. CVSS 4.0 scores through a lookup table and 2.0 uses different
+  metrics, so neither is approximated: the vector is reported and the score is
+  left empty. `severity` now follows the computed score rather than being
+  guessed alongside it, and a database's own label no longer overrules a score
+  derived from the vector
+- `--min-severity` silently discarded every finding the source had not rated.
+  UNKNOWN was absent from the ordering table, so it scored below NONE and fell
+  out of any filter. OSV records frequently carry no severity, so this was
+  routine: filtering `pkg:pypi/django@3.2.0` to high dropped unrated advisories
+  with nothing said about it. Unrated findings are now always kept, and the
+  number withheld by the filter is reported in `warnings`. The two severity
+  ordering tables, one in the filter and one in the result sort, are now one
+- VulnerableCode findings were labelled `source: osv`. The envelope
+  contradicted itself, with `sources_checked` naming `vulnerablecode` while
+  every record inside credited a database that was never queried. It also left
+  the VulnerableCode entry in the merge priority table unreachable
+
 ### Removed
 - `cache_enabled`, `cache_dir`, `cache_ttl`, the `--no-cache` flag, the
   `VULNQ_CACHE_DIR` and `VULNQ_CACHE_TTL` environment variables and the

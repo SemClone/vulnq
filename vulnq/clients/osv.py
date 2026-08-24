@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from packageurl import PackageURL
 
+from ..cvss import base_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
@@ -186,42 +187,44 @@ class OSVClient(BaseClient):
         cvss_score = None
         cvss_vector = None
 
-        # Check for severity in different locations
-        if "severity" in data:
-            severity_data = data["severity"]
-            if isinstance(severity_data, list) and severity_data:
-                for severity_info in severity_data:
-                    # OSV returns CVSS vector string in the "score" field
-                    score_val = severity_info.get("score")
-                    if score_val and isinstance(score_val, str) and "CVSS" in score_val:
-                        cvss_vector = score_val
-                        # Calculate score from CVSS v3 vector
-                        # This is simplified - just use severity from impact
-                        if "/C:H" in score_val or "/I:H" in score_val or "/A:H" in score_val:
-                            if "/AC:L" in score_val:  # Low complexity = easier to exploit
-                                cvss_score = 9.0  # Critical
-                                severity = Severity.CRITICAL
-                            else:
-                                cvss_score = 7.5  # High
-                                severity = Severity.HIGH
-                        elif "/C:L" in score_val or "/I:L" in score_val or "/A:L" in score_val:
-                            cvss_score = 5.0  # Medium
-                            severity = Severity.MEDIUM
-                        else:
-                            cvss_score = 3.0  # Low
-                            severity = Severity.LOW
-                        break
-                    elif score_val:
-                        try:
-                            cvss_score = float(score_val)
-                            severity = self.cvss_to_severity(cvss_score)
-                            break
-                        except (ValueError, TypeError):
-                            pass
+        # OSV puts the vector in the "score" field, and may carry more than one
+        # entry for the same advisory: CVSS_V3 and CVSS_V4 side by side. Prefer
+        # whichever can actually be scored, so the vector reported and the score
+        # reported describe the same thing.
+        for severity_info in data.get("severity") or []:
+            if not isinstance(severity_info, dict):
+                continue
+            score_val = severity_info.get("score")
+            if not score_val:
+                continue
 
-        # Check database_specific for additional severity info
-        if "database_specific" in data and "severity" in data["database_specific"]:
-            db_severity = data["database_specific"]["severity"]
+            if isinstance(score_val, str) and score_val.startswith("CVSS:"):
+                computed = base_score(score_val)
+                if computed is not None:
+                    cvss_vector = score_val
+                    cvss_score = computed
+                    severity = self.cvss_to_severity(computed)
+                    break
+                # 4.0 scores through a lookup table and 2.0 uses different
+                # metrics, so neither is computed here. The vector is still
+                # worth reporting, because a consumer can score it even if we
+                # do not. Keep the first, in case a scorable one follows.
+                if cvss_vector is None:
+                    cvss_vector = score_val
+                continue
+
+            try:
+                cvss_score = float(score_val)
+            except (ValueError, TypeError):
+                continue
+            severity = self.cvss_to_severity(cvss_score)
+            break
+
+        # Only consulted when nothing above produced a rating. A score computed
+        # from the vector and the severity printed beside it have to agree, so
+        # the database's own label does not overrule one.
+        if severity == Severity.UNKNOWN:
+            db_severity = (data.get("database_specific") or {}).get("severity")
             if isinstance(db_severity, str):
                 severity = self.normalize_severity(db_severity)
 
