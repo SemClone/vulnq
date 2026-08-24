@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- `cache_enabled`, `cache_dir`, `cache_ttl`, the `--no-cache` flag, the
+  `VULNQ_CACHE_DIR` and `VULNQ_CACHE_TTL` environment variables and the
+  `cache` extra. Nothing read any of them and `diskcache` was never imported,
+  so every run re-queried every source. `--no-cache` forced nothing and
+  `cache_ttl` bounded no staleness. Caching belongs at the layer that runs
+  vulnq in bulk, not inside a single query
+
 ### Fixed
 - PyPI names were not normalized per PEP 503. Dots were left alone where
   underscores and case were folded, so `zope.interface` and `zope_interface`
@@ -42,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `+00:00` spelling, which pydantic's own default would have changed to `Z`.
   `pydantic` is pinned below 3 until compatibility with it can be tested
   against a real release.
+
+- `max_concurrent` was configurable and ignored: the request semaphore was
+  hardcoded to five, and `VULNQ_MAX_CONCURRENT` was documented in the README
+  but never read. Both now reach the semaphore. The default is still five, so
+  nothing changes unless it is set, and a value below one is refused at
+  construction rather than deadlocking on `Semaphore(0)`
 
 ## [1.4.0] - 2026-08-17
 

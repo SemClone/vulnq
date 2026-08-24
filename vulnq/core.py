@@ -127,6 +127,15 @@ class VulnerabilityQuery:
         config.kev_snapshot = os.environ.get("VULNQ_KEV_SNAPSHOT") or None
         config.epss_snapshot = os.environ.get("VULNQ_EPSS_SNAPSHOT") or None
 
+        # Documented in the README, so it has to be read here or the README is
+        # describing a knob that does not exist.
+        max_concurrent = os.environ.get("VULNQ_MAX_CONCURRENT")
+        if max_concurrent:
+            try:
+                config.max_concurrent = int(max_concurrent)
+            except ValueError:
+                raise ValueError(f"VULNQ_MAX_CONCURRENT must be an integer, got {max_concurrent!r}")
+
         max_age = os.environ.get("VULNQ_SNAPSHOT_MAX_AGE_DAYS")
         if max_age:
             try:
@@ -148,7 +157,9 @@ class VulnerabilityQuery:
         # Initialize VulnerableCode if enabled
         if self.config.use_vulnerablecode:
             clients[VulnerabilitySource.VULNERABLECODE] = VulnerableCodeClient(
-                timeout=self.config.timeout, verbose=self.verbose
+                timeout=self.config.timeout,
+                max_concurrent=self.config.max_concurrent,
+                verbose=self.verbose,
             )
             # If using VulnerableCode, it's the only source
             return clients
@@ -156,17 +167,25 @@ class VulnerabilityQuery:
         # Otherwise, initialize individual sources
         if VulnerabilitySource.OSV in self.config.sources:
             clients[VulnerabilitySource.OSV] = OSVClient(
-                timeout=self.config.timeout, verbose=self.verbose
+                timeout=self.config.timeout,
+                max_concurrent=self.config.max_concurrent,
+                verbose=self.verbose,
             )
 
         if VulnerabilitySource.GITHUB in self.config.sources:
             clients[VulnerabilitySource.GITHUB] = GitHubClient(
-                api_key=self.config.github_token, timeout=self.config.timeout, verbose=self.verbose
+                api_key=self.config.github_token,
+                timeout=self.config.timeout,
+                max_concurrent=self.config.max_concurrent,
+                verbose=self.verbose,
             )
 
         if VulnerabilitySource.NVD in self.config.sources:
             clients[VulnerabilitySource.NVD] = NVDClient(
-                api_key=self.config.nvd_api_key, timeout=self.config.timeout, verbose=self.verbose
+                api_key=self.config.nvd_api_key,
+                timeout=self.config.timeout,
+                max_concurrent=self.config.max_concurrent,
+                verbose=self.verbose,
             )
 
         if not clients:

@@ -38,6 +38,7 @@ class BaseClient(ABC):
         timeout: int = 30,
         max_retries: int = 3,
         verbose: bool = False,
+        max_concurrent: int = 5,
     ):
         """Initialize the client.
 
@@ -46,11 +47,20 @@ class BaseClient(ABC):
             timeout: Request timeout in seconds
             max_retries: Maximum number of retry attempts
             verbose: Enable verbose output
+            max_concurrent: Requests this client may have in flight at once
+
+        Raises:
+            ValueError: If max_concurrent is below 1, which would deadlock
         """
+        if max_concurrent < 1:
+            # asyncio.Semaphore(0) blocks forever rather than erroring, so a
+            # zero here would hang the query instead of failing it.
+            raise ValueError(f"max_concurrent must be at least 1, got {max_concurrent}")
         self.api_key = api_key
         self.timeout = timeout
         self.max_retries = max_retries
         self.verbose = verbose
+        self.max_concurrent = max_concurrent
         self.session: Optional[aiohttp.ClientSession] = None
         # Built on first use rather than here. Before Python 3.10 a Semaphore
         # binds to the current event loop at construction, so constructing a
@@ -82,7 +92,7 @@ class BaseClient(ABC):
             loop = None
 
         if self._semaphore is None or self._semaphore_loop is not loop:
-            self._semaphore = asyncio.Semaphore(5)
+            self._semaphore = asyncio.Semaphore(self.max_concurrent)
             self._semaphore_loop = loop
 
         return self._semaphore
