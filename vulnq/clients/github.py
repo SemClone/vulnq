@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from packageurl import PackageURL
 
+from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from ..versions import evaluate_range
 from .base import BaseClient, RateLimitError, UnsupportedQueryError
@@ -389,10 +390,21 @@ class GitHubClient(BaseClient):
         cvss_vector = None
         cvss_data = advisory.get("cvss", {})
         if cvss_data:
-            cvss_score = cvss_data.get("score")
+            cvss_score = coerce_score(cvss_data.get("score"))
             cvss_vector = cvss_data.get("vectorString")
+
+            # GitHub returns score 0.0 with a null vector for an advisory it
+            # never scored, and around one PIP advisory in eight arrives that
+            # way. A genuine 0.0 always carries the vector it was computed
+            # from, so a bare 0.0 is an absent score rather than "no impact".
+            # Left as a real score it prints as 0.0, blocks another source's
+            # real score during the merge, and reads to any downstream gate as
+            # harmless.
+            if cvss_score == 0.0 and not cvss_vector:
+                cvss_score = None
+
             # Use CVSS score for severity if not already set
-            if cvss_score and severity == Severity.UNKNOWN:
+            if cvss_score is not None and severity == Severity.UNKNOWN:
                 severity = self.cvss_to_severity(cvss_score)
 
         # Get identifiers (CVE, etc.)

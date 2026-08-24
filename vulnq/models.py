@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, computed_field, field_serializer
 
@@ -56,6 +56,19 @@ class VulnerabilitySource(str, Enum):
     GITHUB = "github"
     NVD = "nvd"
     VULNERABLECODE = "vulnerablecode"
+
+
+# One ordering for severity, used by the filter and by the result sort. Two
+# copies of this drifted apart once already: the filter omitted UNKNOWN and so
+# scored it below NONE, while the sort listed it explicitly at zero.
+SEVERITY_ORDER: Dict[Severity, int] = {
+    Severity.UNKNOWN: 0,
+    Severity.NONE: 1,
+    Severity.LOW: 2,
+    Severity.MEDIUM: 3,
+    Severity.HIGH: 4,
+    Severity.CRITICAL: 5,
+}
 
 
 class Vulnerability(BaseModel):
@@ -205,17 +218,30 @@ class QueryResult(BaseModel):
         """Get high severity vulnerability count."""
         return sum(1 for v in self.vulnerabilities if v.severity == Severity.HIGH)
 
-    def filter_by_severity(self, min_severity: Severity) -> List[Vulnerability]:
-        """Filter vulnerabilities by minimum severity."""
-        severity_order = {
-            Severity.NONE: 0,
-            Severity.LOW: 1,
-            Severity.MEDIUM: 2,
-            Severity.HIGH: 3,
-            Severity.CRITICAL: 4,
-        }
-        min_level = severity_order.get(min_severity, 0)
-        return [v for v in self.vulnerabilities if severity_order.get(v.severity, 0) >= min_level]
+    def filter_by_severity(self, min_severity: Severity) -> Tuple[List[Vulnerability], int]:
+        """Filter by minimum severity, keeping anything nobody rated.
+
+        UNKNOWN means no source scored this advisory. NONE means a source
+        scored it and it came out at zero. Ranking the first below the second
+        drops unrated findings out of every filtered run, and for OSV that is
+        routine rather than rare: a PYSEC record often carries no severity at
+        all. An unrated advisory cannot be ruled out, so it is kept.
+
+        Args:
+            min_severity: Lowest severity to keep
+
+        Returns:
+            Tuple of (kept vulnerabilities, number withheld). The count is what
+            lets a caller say something was filtered out, rather than present a
+            shortened list as the whole answer.
+        """
+        min_level = SEVERITY_ORDER[min_severity]
+        kept = [
+            v
+            for v in self.vulnerabilities
+            if v.severity is Severity.UNKNOWN or SEVERITY_ORDER[v.severity] >= min_level
+        ]
+        return kept, len(self.vulnerabilities) - len(kept)
 
 
 class Configuration(BaseModel):

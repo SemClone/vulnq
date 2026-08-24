@@ -47,7 +47,11 @@ def print_table(result: QueryResult, show_fixes: bool = False):
         row = [
             vuln.id,
             Text(vuln.severity.value, style=severity_style),
-            str(vuln.cvss_score) if vuln.cvss_score else "-",
+            # 0.0 is a computed score meaning no impact. Falsy checks printed
+            # it as "-", making it indistinguishable from never scored.
+            # One decimal always, so the column lines up and a float artifact
+            # cannot reach the output as 7.000000001.
+            f"{vuln.cvss_score:.1f}" if vuln.cvss_score is not None else "-",
         ]
 
         if show_kev:
@@ -178,7 +182,8 @@ def print_markdown(result: QueryResult):
 
         for vuln in result.vulnerabilities:
             md += f"### {vuln.id} - {vuln.severity.value}\n\n"
-            md += f"**CVSS Score:** {vuln.cvss_score or 'N/A'}\n\n"
+            score = "N/A" if vuln.cvss_score is None else f"{vuln.cvss_score:.1f}"
+            md += f"**CVSS Score:** {score}\n\n"
 
             if vuln.version_match == VersionMatch.UNCONFIRMED:
                 md += (
@@ -365,7 +370,14 @@ def main(
             # Filter by severity if requested
             if min_severity:
                 min_sev = Severity[min_severity.upper()]
-                result.vulnerabilities = result.filter_by_severity(min_sev)
+                result.vulnerabilities, withheld = result.filter_by_severity(min_sev)
+                if withheld:
+                    # A shortened list handed back with nothing said about it
+                    # reads as the whole answer.
+                    result.warnings.append(
+                        f"{withheld} finding(s) below {min_sev.value} were withheld by "
+                        "--min-severity. Unrated findings are always kept"
+                    )
 
             # Output results
             if format == "json":

@@ -5,8 +5,15 @@ from typing import Any, Dict, List, Optional
 
 from packageurl import PackageURL
 
+from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
+
+# Preference order for a CVSS base score. Newest first, because a record
+# carrying both is describing the same finding under a newer specification.
+# Nothing outside this tuple may fill cvss_score: the identifiers are
+# VulnerableCode's own, from vulnerabilities/severity_systems.py.
+_CVSS_SYSTEMS = ("cvssv4", "cvssv3.1", "cvssv3", "cvssv2")
 
 
 class VulnerableCodeClient(BaseClient):
@@ -15,9 +22,11 @@ class VulnerableCodeClient(BaseClient):
     @property
     def source(self) -> VulnerabilitySource:
         """Return the vulnerability source identifier."""
-        # VulnerableCode aggregates multiple sources
-        # We'll mark it as OSV since it's similar in nature
-        return VulnerabilitySource.OSV
+        # It aggregates other databases, but it is still the source that was
+        # asked and the one that answered. Labelling its findings as OSV
+        # contradicted sources_checked in the same envelope and credited data
+        # to a database that was never queried.
+        return VulnerabilitySource.VULNERABLECODE
 
     @property
     def base_url(self) -> str:
@@ -173,28 +182,42 @@ class VulnerableCodeClient(BaseClient):
         severity = Severity.UNKNOWN
         cvss_score = None
 
-        # Check for scores
+        # VulnerableCode carries several scoring systems per vulnerability and
+        # names them without an underscore. Matching "cvss_v3" meant the branch
+        # below never fired on a real record.
+        #
+        # Only CVSS systems may fill a CVSS field. The fallback used to take
+        # the first system with a positive value, which let an EPSS row - a
+        # probability between 0 and 1 - land in cvss_score as if it were a
+        # base score, turning a 0.97 likelihood of exploitation into "LOW".
         scores = data.get("scores", [])
-        for score_data in scores:
-            if score_data.get("scoring_system") == "cvss_v3":
-                try:
-                    cvss_score = float(score_data.get("value", 0))
-                    severity = self.cvss_to_severity(cvss_score)
-                    break
-                except Exception:
-                    pass
-
-        # If no CVSS v3, try other scoring systems
-        if not cvss_score and scores:
+        for system in _CVSS_SYSTEMS:
             for score_data in scores:
-                try:
-                    score_value = float(score_data.get("value", 0))
-                    if score_value > 0:
-                        cvss_score = score_value
-                        severity = self.cvss_to_severity(cvss_score)
+                if not isinstance(score_data, dict):
+                    continue
+                if str(score_data.get("scoring_system", "")).lower() != system:
+                    continue
+                numeric = coerce_score(score_data.get("value"))
+                if numeric is None:
+                    continue
+                cvss_score = numeric
+                severity = self.cvss_to_severity(cvss_score)
+                break
+            if cvss_score is not None:
+                break
+
+        # A textual rating from any system is still a rating, and is the only
+        # one available when no CVSS row parsed.
+        if severity is Severity.UNKNOWN:
+            for score_data in scores:
+                if not isinstance(score_data, dict):
+                    continue
+                value = score_data.get("value")
+                if isinstance(value, str) and coerce_score(value) is None:
+                    rated = self.normalize_severity(value)
+                    if rated is not Severity.UNKNOWN:
+                        severity = rated
                         break
-                except Exception:
-                    pass
 
         # Get summary
         summary = data.get("summary", "")

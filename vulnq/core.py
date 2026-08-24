@@ -16,11 +16,11 @@ from .clients import (
 )
 from .enrichment import Enricher, build_enricher
 from .models import (
+    SEVERITY_ORDER,
     Configuration,
     IdentifierType,
     PackageInfo,
     QueryResult,
-    Severity,
     VersionMatch,
     Vulnerability,
     VulnerabilitySource,
@@ -473,16 +473,7 @@ class VulnerabilityQuery:
                 consolidated.append(merged)
 
         # Sort by severity and ID
-        severity_order = {
-            Severity.CRITICAL: 5,
-            Severity.HIGH: 4,
-            Severity.MEDIUM: 3,
-            Severity.LOW: 2,
-            Severity.NONE: 1,
-            Severity.UNKNOWN: 0,
-        }
-
-        consolidated.sort(key=lambda v: (-severity_order.get(v.severity, 0), v.id))
+        consolidated.sort(key=lambda v: (-SEVERITY_ORDER[v.severity], v.id))
 
         return consolidated
 
@@ -556,10 +547,15 @@ class VulnerabilityQuery:
             ):
                 merged.version_match = vuln.version_match
 
-            # Use CVSS score if not present
-            if not merged.cvss_score and vuln.cvss_score:
+            # Take the score, its vector and its severity together, or the
+            # merged record ends up carrying one source's 9.8 beside another
+            # source's UNKNOWN. Both are printed side by side and counted
+            # separately downstream, so they have to describe the same rating.
+            # `is None` rather than falsy: 0.0 is a real score.
+            if merged.cvss_score is None and vuln.cvss_score is not None:
                 merged.cvss_score = vuln.cvss_score
                 merged.cvss_vector = vuln.cvss_vector
+                merged.severity = vuln.severity
 
             # Use earliest published date. NVD publishes timestamps without an
             # offset while OSV and GitHub publish them with one, so comparing

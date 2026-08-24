@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- OSV CVSS scores were invented. The client did not parse the vector: it
+  checked it for a handful of substrings and picked one of four hardcoded
+  numbers, ignoring attack vector, privileges required, user interaction and
+  scope entirely. `AV:L/AC:L/PR:H/UI:R/S:U/C:H/I:N/A:N` scores 4.2 and was
+  reported as 9.0 CRITICAL, because it contains `/C:H` and `/AC:L`. The number
+  sat in the same field as NVD's real scores, so anything sorting or gating on
+  it was acting on a value nobody computed. Base scores are now computed from
+  the vector per the CVSS 3.1 specification, checked against 235 published NVD
+  records. CVSS 4.0 scores through a lookup table and 2.0 uses different
+  metrics, so neither is approximated: the vector is reported and the score is
+  left empty. `severity` now follows the computed score rather than being
+  guessed alongside it, and a database's own label no longer overrules a score
+  derived from the vector. A vector that states a base metric twice is refused
+  rather than scored from the first value. A CVSS 2.0 vector, which the OSV
+  schema allows and which carries no `CVSS:` prefix, is now recognised and
+  reported rather than discarded by the prefix check; no live OSV record
+  carries one today, so that part is defensive
+- A score of `0.0` was treated as a missing score. It is a computed result
+  meaning no impact, and falsy checks made it indistinguishable from never
+  scored: the table and markdown printed `-` and `N/A` for it, the merge
+  overwrote it with another source's score, and the GitHub, NVD and
+  VulnerableCode clients skipped deriving a severity from it
+- GitHub returns a score of `0.0` with a null vector for an advisory it never
+  scored, and about one PyPI advisory in eight arrives that way. It was stored
+  as a real score, so a finding GitHub rated HIGH reported `cvss_score: 0.0`,
+  blocked another source's real score during the merge, and read to any
+  downstream gate as harmless. A genuine zero always carries the vector it was
+  computed from, so a bare `0.0` is now an absent score. VulnerableCode had the
+  same shape, defaulting a missing `value` to `0`
+- A score arriving as a string failed the whole source. Sources disagree about
+  the type: NVD and GitHub send a JSON number that is int or float depending on
+  whether it has a fraction, OSV sends a string, VulnerableCode sends either.
+  A string reached `cvss_to_severity` and raised `TypeError`, which is not
+  caught per advisory, so one odd record turned a working GitHub or NVD query
+  into a reported failure. Every source now goes through one coercion that
+  accepts int, float and numeric string, and rejects booleans, NaN, infinity
+  and anything outside the 0 to 10 range a CVSS score occupies
+- VulnerableCode's CVSS branch never ran. It matched the scoring system name
+  `cvss_v3`, where VulnerableCode writes `cvssv3` and `cvssv3.1`. Worse, the
+  fallback took the first positive value from any scoring system, so an EPSS
+  row, a probability between 0 and 1, could land in `cvss_score`: a 0.97
+  likelihood of exploitation was reported as a CVSS score of 0.97, which reads
+  as LOW. Only CVSS systems fill the CVSS field now, newest specification
+  first, and a textual rating from any system still sets the severity
+- Scores render to one decimal in the table and in markdown, so the column
+  lines up and a float artifact cannot reach the output
+- A merged record could carry one source's score beside another source's
+  severity, reporting `9.8` next to `UNKNOWN`. A score, its vector and its
+  severity are now taken together
+- `--min-severity` silently discarded every finding the source had not rated.
+  UNKNOWN was absent from the ordering table, so it scored below NONE and fell
+  out of any filter. OSV records frequently carry no severity, so this was
+  routine: filtering `pkg:pypi/django@3.2.0` to high dropped unrated advisories
+  with nothing said about it. Unrated findings are now always kept, and the
+  number withheld by the filter is reported in `warnings`. The two severity
+  ordering tables, one in the filter and one in the result sort, are now one
+- VulnerableCode findings were labelled `source: osv`. The envelope
+  contradicted itself, with `sources_checked` naming `vulnerablecode` while
+  every record inside credited a database that was never queried. It also left
+  the VulnerableCode entry in the merge priority table unreachable
+
+### Changed
+- `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
+  list, so a caller can report what a filter removed instead of presenting a
+  shortened list as the whole answer. JSON output is unaffected
+
 ### Removed
 - `cache_enabled`, `cache_dir`, `cache_ttl`, the `--no-cache` flag, the
   `VULNQ_CACHE_DIR` and `VULNQ_CACHE_TTL` environment variables and the

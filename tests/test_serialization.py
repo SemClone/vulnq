@@ -1,6 +1,7 @@
 """The output envelope must survive pydantic v3, byte for byte."""
 
 import json
+import pathlib
 import warnings
 from datetime import date, datetime, timezone
 
@@ -14,18 +15,34 @@ def _vuln(**kwargs):
 
 
 def test_no_pydantic_deprecations_are_raised():
-    """v1-era config is what breaks on v3, so treat any deprecation as failure."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        import importlib
+    """v1-era config is what breaks on v3, so treat any deprecation as failure.
 
-        import vulnq.models
+    Both deprecated APIs warn while the class is being built, so the model has
+    to be imported fresh to see them. That happens in a subprocess rather than
+    through importlib.reload: reloading rebinds Severity and every module-level
+    table keyed by it, leaving later tests holding enum members that no longer
+    match the ones the reloaded module uses.
+    """
+    import subprocess
+    import sys
 
-        importlib.reload(vulnq.models)
-        _vuln(published_date=datetime(2021, 10, 22, tzinfo=timezone.utc)).model_dump(mode="json")
-
-    deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert not deprecations, [str(w.message) for w in deprecations]
+    script = """
+import warnings, sys
+warnings.simplefilter("error", DeprecationWarning)
+from datetime import datetime, timezone
+import vulnq.models as m
+v = m.Vulnerability(id="C", source=m.VulnerabilitySource.OSV, summary="x",
+                    published_date=datetime(2021, 10, 22, tzinfo=timezone.utc))
+v.model_dump(mode="json")
+v.model_dump_json()
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(pathlib.Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_utc_is_still_spelled_as_an_offset():
