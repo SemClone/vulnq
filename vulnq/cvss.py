@@ -59,6 +59,11 @@ def parse_vector(vector: str) -> Optional[Tuple[str, Dict[str, str]]]:
         key, _, value = part.partition(":")
         if not value:
             return None
+        if key in _REQUIRED and key in metrics:
+            # A base metric stated twice contradicts itself. Taking the first
+            # and scoring anyway would put a number on a vector that has no
+            # single meaning.
+            return None
         # Temporal and environmental metrics may follow the base ones. They do
         # not change the base score, so they are ignored rather than refused.
         metrics.setdefault(key, value)

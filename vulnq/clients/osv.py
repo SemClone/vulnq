@@ -1,6 +1,7 @@
 """OSV.dev API client."""
 
 from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional
 
 from packageurl import PackageURL
@@ -13,6 +14,25 @@ from .base import BaseClient, UnsupportedQueryError
 # hands back a token for the rest; ignoring it reported 3000 of an unknown
 # larger total as if that were the whole answer.
 MAX_PAGES = 10
+
+
+# OSV writes a 3.x or 4.0 vector with its CVSS: prefix, but publishes 2.0 as a
+# bare metric string like "AV:L/AC:M/Au:N/C:P/I:P/A:P". Matching only on the
+# prefix dropped those vectors entirely, so a 2.0 advisory reported neither a
+# score nor the vector a consumer could have scored itself.
+_VECTOR = re.compile(r"^(CVSS:[\d.]+/)?[A-Za-z]+:[A-Za-z0-9.]+(/[A-Za-z]+:[A-Za-z0-9.]+)+$")
+
+
+def _is_vector(value: str) -> bool:
+    """Return whether a string is a CVSS vector rather than a numeric score.
+
+    Args:
+        value: The contents of an OSV severity "score" field
+
+    Returns:
+        True if it reads as a metric vector of any CVSS version
+    """
+    return bool(_VECTOR.match(value.strip()))
 
 
 class OSVClient(BaseClient):
@@ -198,7 +218,7 @@ class OSVClient(BaseClient):
             if not score_val:
                 continue
 
-            if isinstance(score_val, str) and score_val.startswith("CVSS:"):
+            if isinstance(score_val, str) and _is_vector(score_val):
                 computed = base_score(score_val)
                 if computed is not None:
                     cvss_vector = score_val

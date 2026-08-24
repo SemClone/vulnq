@@ -47,7 +47,9 @@ def print_table(result: QueryResult, show_fixes: bool = False):
         row = [
             vuln.id,
             Text(vuln.severity.value, style=severity_style),
-            str(vuln.cvss_score) if vuln.cvss_score else "-",
+            # 0.0 is a computed score meaning no impact. Falsy checks printed
+            # it as "-", making it indistinguishable from never scored.
+            str(vuln.cvss_score) if vuln.cvss_score is not None else "-",
         ]
 
         if show_kev:
@@ -178,7 +180,8 @@ def print_markdown(result: QueryResult):
 
         for vuln in result.vulnerabilities:
             md += f"### {vuln.id} - {vuln.severity.value}\n\n"
-            md += f"**CVSS Score:** {vuln.cvss_score or 'N/A'}\n\n"
+            score = "N/A" if vuln.cvss_score is None else vuln.cvss_score
+            md += f"**CVSS Score:** {score}\n\n"
 
             if vuln.version_match == VersionMatch.UNCONFIRMED:
                 md += (

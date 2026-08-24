@@ -150,3 +150,88 @@ def test_vulnerablecode_label_agrees_with_sources_checked():
     client._make_request = _capture
     asyncio.run(client.query_purl("pkg:pypi/django@3.2.0"))
     assert client.source.value == "vulnerablecode"
+
+
+def test_a_zero_score_is_not_treated_as_a_missing_one(capsys):
+    """0.0 is computed and means no impact. None means nobody scored it.
+
+    Falsy checks conflated the two in the table, the markdown, and in three
+    clients' severity fallbacks.
+    """
+    from vulnq.cli import print_markdown
+    from vulnq.cvss import base_score
+
+    assert base_score("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N") == 0.0
+
+    result = QueryResult(
+        query="q",
+        query_type=IdentifierType.PURL,
+        vulnerabilities=[
+            Vulnerability(id="ZERO", source=VulnerabilitySource.OSV, summary="x", cvss_score=0.0),
+            Vulnerability(id="UNSCORED", source=VulnerabilitySource.OSV, summary="x"),
+        ],
+        query_time=datetime.datetime.now(),
+    )
+    print_markdown(result)
+    out = capsys.readouterr().out
+    assert "**CVSS Score:** 0.0" in out
+    assert "**CVSS Score:** N/A" in out
+
+
+def test_a_merged_record_does_not_mix_one_score_with_another_severity():
+    """Adopting a score without its severity printed 9.8 beside UNKNOWN."""
+    from vulnq.core import VulnerabilityQuery
+
+    unrated = Vulnerability(
+        id="CVE-1", source=VulnerabilitySource.GITHUB, summary="x", severity=Severity.UNKNOWN
+    )
+    scored = Vulnerability(
+        id="CVE-1",
+        source=VulnerabilitySource.OSV,
+        summary="x",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    )
+
+    merged = VulnerabilityQuery(config=None)._merge_vulnerabilities([unrated, scored])
+    assert merged.cvss_score == 9.8
+    assert merged.severity is Severity.CRITICAL
+
+
+def test_a_merged_zero_score_is_not_overwritten():
+    """`not merged.cvss_score` treated a real 0.0 as absent."""
+    from vulnq.core import VulnerabilityQuery
+
+    zero = Vulnerability(
+        id="CVE-2",
+        source=VulnerabilitySource.NVD,
+        summary="x",
+        severity=Severity.NONE,
+        cvss_score=0.0,
+    )
+    other = Vulnerability(
+        id="CVE-2",
+        source=VulnerabilitySource.OSV,
+        summary="x",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+    )
+
+    merged = VulnerabilityQuery(config=None)._merge_vulnerabilities([zero, other])
+    assert merged.cvss_score == 0.0
+    assert merged.severity is Severity.NONE
+
+
+def test_a_bare_cvss_2_vector_is_kept():
+    """OSV publishes 2.0 without the CVSS: prefix, so prefix matching lost it."""
+    vuln = _osv_severity([{"type": "CVSS_V2", "score": "AV:L/AC:M/Au:N/C:P/I:P/A:P"}])
+    assert vuln.cvss_vector == "AV:L/AC:M/Au:N/C:P/I:P/A:P"
+    assert vuln.cvss_score is None
+
+
+def test_a_numeric_score_is_still_read_as_a_number():
+    """The vector test must not swallow a plain numeric severity entry."""
+    vuln = _osv_severity([{"type": "CVSS_V3", "score": "7.5"}])
+    assert vuln.cvss_score == 7.5
+    assert vuln.severity is Severity.HIGH

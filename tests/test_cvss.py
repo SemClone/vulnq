@@ -87,3 +87,26 @@ def test_temporal_metrics_do_not_disturb_the_base_score():
 def test_parse_vector_reports_the_version():
     assert parse_vector("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")[0] == "3.0"
     assert parse_vector("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")[0] == "3.1"
+
+
+@pytest.mark.parametrize(
+    "vector",
+    [
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/AV:P",
+        "CVSS:3.1/AV:N/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/S:C/C:H/I:H/A:H",
+    ],
+)
+def test_a_repeated_base_metric_is_refused(vector):
+    """A vector stating one base metric twice has no single meaning.
+
+    Taking the first value and scoring anyway puts a confident number on a
+    contradictory input, which is the shape of bug this module exists to end.
+    """
+    assert base_score(vector) is None
+
+
+def test_repeating_a_temporal_metric_is_still_fine():
+    """Only the base metrics decide a base score."""
+    vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:F/E:H"
+    assert base_score(vector) == 9.8

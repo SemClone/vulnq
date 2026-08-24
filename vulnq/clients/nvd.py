@@ -262,7 +262,7 @@ class NVDClient(BaseClient):
             severity = self.normalize_severity(cvss_v2.get("baseSeverity", ""))
 
         # Use score to determine severity if needed
-        if cvss_score and severity == Severity.UNKNOWN:
+        if cvss_score is not None and severity == Severity.UNKNOWN:
             severity = self.cvss_to_severity(cvss_score)
 
         # Parse dates

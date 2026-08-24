@@ -187,7 +187,7 @@ class VulnerableCodeClient(BaseClient):
                     pass
 
         # If no CVSS v3, try other scoring systems
-        if not cvss_score and scores:
+        if cvss_score is None and scores:
             for score_data in scores:
                 try:
                     score_value = float(score_data.get("value", 0))

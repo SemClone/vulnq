@@ -392,7 +392,7 @@ class GitHubClient(BaseClient):
             cvss_score = cvss_data.get("score")
             cvss_vector = cvss_data.get("vectorString")
             # Use CVSS score for severity if not already set
-            if cvss_score and severity == Severity.UNKNOWN:
+            if cvss_score is not None and severity == Severity.UNKNOWN:
                 severity = self.cvss_to_severity(cvss_score)
 
         # Get identifiers (CVE, etc.)
