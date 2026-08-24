@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scored: the table and markdown printed `-` and `N/A` for it, the merge
   overwrote it with another source's score, and the GitHub, NVD and
   VulnerableCode clients skipped deriving a severity from it
+- GitHub returns a score of `0.0` with a null vector for an advisory it never
+  scored, and about one PyPI advisory in eight arrives that way. It was stored
+  as a real score, so a finding GitHub rated HIGH reported `cvss_score: 0.0`,
+  blocked another source's real score during the merge, and read to any
+  downstream gate as harmless. A genuine zero always carries the vector it was
+  computed from, so a bare `0.0` is now an absent score. VulnerableCode had the
+  same shape, defaulting a missing `value` to `0`
 - A merged record could carry one source's score beside another source's
   severity, reporting `9.8` next to `UNKNOWN`. A score, its vector and its
   severity are now taken together
@@ -43,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contradicted itself, with `sources_checked` naming `vulnerablecode` while
   every record inside credited a database that was never queried. It also left
   the VulnerableCode entry in the merge priority table unreachable
+
+### Changed
+- `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
+  list, so a caller can report what a filter removed instead of presenting a
+  shortened list as the whole answer. JSON output is unaffected
 
 ### Removed
 - `cache_enabled`, `cache_dir`, `cache_ttl`, the `--no-cache` flag, the

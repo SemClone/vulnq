@@ -391,6 +391,17 @@ class GitHubClient(BaseClient):
         if cvss_data:
             cvss_score = cvss_data.get("score")
             cvss_vector = cvss_data.get("vectorString")
+
+            # GitHub returns score 0.0 with a null vector for an advisory it
+            # never scored, and around one PIP advisory in eight arrives that
+            # way. A genuine 0.0 always carries the vector it was computed
+            # from, so a bare 0.0 is an absent score rather than "no impact".
+            # Left as a real score it prints as 0.0, blocks another source's
+            # real score during the merge, and reads to any downstream gate as
+            # harmless.
+            if cvss_score == 0.0 and not cvss_vector:
+                cvss_score = None
+
             # Use CVSS score for severity if not already set
             if cvss_score is not None and severity == Severity.UNKNOWN:
                 severity = self.cvss_to_severity(cvss_score)

@@ -24,6 +24,15 @@ KNOWN = [
     ("CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N", 4.9),
     ("CVSS:3.0/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", 6.1),
     ("CVSS:3.1/AV:P/AC:H/PR:H/UI:R/S:U/C:N/I:N/A:N", 0.0),
+    # Adjacent is the only AV weight no other row reaches.
+    ("CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 8.8),
+    # Scope changed uses its own privileges table, and these are the only two
+    # rows that reach its Low and High weights at an exact value.
+    ("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H", 9.9),
+    ("CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H", 9.1),
+    # Scope changed below the 10.0 cap and at an ISS where the -3.25 tail term
+    # is worth more than a rounding error, so dropping it changes the answer.
+    ("CVSS:3.1/AV:P/AC:H/PR:H/UI:R/S:C/C:H/I:H/A:H", 6.8),
 ]
 
 

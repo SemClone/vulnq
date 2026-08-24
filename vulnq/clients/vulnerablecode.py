@@ -180,7 +180,12 @@ class VulnerableCodeClient(BaseClient):
         for score_data in scores:
             if score_data.get("scoring_system") == "cvss_v3":
                 try:
-                    cvss_score = float(score_data.get("value", 0))
+                    # Defaulting to 0 turned a record with no value into a
+                    # scored zero, the same sentinel problem GitHub has.
+                    raw_value = score_data.get("value")
+                    if raw_value is None:
+                        continue
+                    cvss_score = float(raw_value)
                     severity = self.cvss_to_severity(cvss_score)
                     break
                 except Exception:

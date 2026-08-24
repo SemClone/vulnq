@@ -138,18 +138,55 @@ def test_vulnerablecode_findings_say_vulnerablecode():
     assert VulnerableCodeClient().source is VulnerabilitySource.VULNERABLECODE
 
 
-def test_vulnerablecode_label_agrees_with_sources_checked():
-    """The envelope contradicted itself: sources_checked said one thing."""
-    client = VulnerableCodeClient()
-    sent = []
+def test_vulnerablecode_findings_carry_the_label_into_the_envelope():
+    """The envelope contradicted itself: sources_checked said one thing.
 
-    async def _capture(method, url, **kwargs):
-        sent.append(url)
-        return {"results": []}
+    Asserted on a parsed finding rather than on the request, because the
+    request never carried the label that was wrong.
+    """
+    payload = {
+        "results": [
+            {
+                "purl": "pkg:pypi/django@3.2.0",
+                "affected_by_vulnerabilities": [
+                    {"vulnerability_id": "VCID-1", "summary": "x", "references": []}
+                ],
+            }
+        ]
+    }
+    findings = VulnerableCodeClient()._parse_response(payload, "pkg:pypi/django@3.2.0")
+    assert findings
+    assert all(f.source is VulnerabilitySource.VULNERABLECODE for f in findings)
 
-    client._make_request = _capture
-    asyncio.run(client.query_purl("pkg:pypi/django@3.2.0"))
-    assert client.source.value == "vulnerablecode"
+
+def test_github_unscored_advisories_do_not_become_a_zero(monkeypatch):
+    """GitHub sends score 0.0 with a null vector for what it never scored.
+
+    Around one PIP advisory in eight arrives that way. Kept as a real score it
+    prints as 0.0, blocks another source's real score in the merge, and reads
+    to a downstream gate as harmless.
+    """
+    from vulnq.clients.github import GitHubClient
+
+    def _node(score, vector):
+        return {
+            "advisory": {
+                "ghsaId": "GHSA-test",
+                "summary": "x",
+                "severity": "HIGH",
+                "cvss": {"score": score, "vectorString": vector},
+                "identifiers": [],
+                "references": [],
+            }
+        }
+
+    client = GitHubClient()
+    real_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
+
+    assert client._parse_vulnerability(_node(0.0, None), None).cvss_score is None
+    # A genuine zero always carries the vector it was computed from.
+    assert client._parse_vulnerability(_node(0.0, real_vector), None).cvss_score == 0.0
+    assert client._parse_vulnerability(_node(9.8, real_vector), None).cvss_score == 9.8
 
 
 def test_a_zero_score_is_not_treated_as_a_missing_one(capsys):
