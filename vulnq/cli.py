@@ -238,7 +238,6 @@ def print_markdown(result: QueryResult):
     help="Sources to check: osv, github, nvd. Naming vulnerablecode selects it instead.",
 )
 @click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
-@click.option("--no-cache", is_flag=True, help="Disable caching")
 @click.option(
     "--kev-snapshot",
     envvar="VULNQ_KEV_SNAPSHOT",
@@ -269,7 +268,6 @@ def main(
     show_fixes: bool,
     sources: tuple,
     use_vulnerablecode: bool,
-    no_cache: bool,
     kev_snapshot: Optional[str],
     epss_snapshot: Optional[str],
     snapshot_max_age_days: Optional[int],
@@ -317,7 +315,6 @@ def main(
     # Start from the environment so API keys and snapshot locations reach a
     # subprocess caller, then let explicit flags override.
     config = VulnerabilityQuery.load_config()
-    config.cache_enabled = not no_cache
     if use_vulnerablecode:
         config.use_vulnerablecode = True
     if kev_snapshot:

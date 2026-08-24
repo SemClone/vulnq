@@ -198,10 +198,6 @@ vulnq can be configured via environment variables or config file:
 export GITHUB_TOKEN="your_github_token"
 export NVD_API_KEY="your_nvd_api_key"
 
-# Cache settings
-export VULNQ_CACHE_DIR="~/.vulnq/cache"
-export VULNQ_CACHE_TTL="3600"  # seconds
-
 # Rate limiting
 export VULNQ_MAX_CONCURRENT="5"
 

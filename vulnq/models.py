@@ -223,10 +223,7 @@ class Configuration(BaseModel):
 
     github_token: Optional[str] = Field(None, description="GitHub API token")
     nvd_api_key: Optional[str] = Field(None, description="NVD API key")
-    cache_enabled: bool = Field(True, description="Enable caching")
-    cache_dir: str = Field("~/.vulnq/cache", description="Cache directory")
-    cache_ttl: int = Field(3600, description="Cache TTL in seconds")
-    max_concurrent: int = Field(5, description="Max concurrent requests")
+    max_concurrent: int = Field(5, description="Max concurrent requests per source")
     timeout: int = Field(30, description="Request timeout in seconds")
     use_vulnerablecode: bool = Field(False, description="Use VulnerableCode as primary source")
     kev_snapshot: Optional[str] = Field(
