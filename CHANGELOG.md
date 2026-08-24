@@ -21,9 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left empty. `severity` now follows the computed score rather than being
   guessed alongside it, and a database's own label no longer overrules a score
   derived from the vector. A vector that states a base metric twice is refused
-  rather than scored from the first value, and a CVSS 2.0 vector, which OSV
-  publishes without the `CVSS:` prefix, is now kept and reported instead of
-  discarded
+  rather than scored from the first value. A CVSS 2.0 vector, which the OSV
+  schema allows and which carries no `CVSS:` prefix, is now recognised and
+  reported rather than discarded by the prefix check; no live OSV record
+  carries one today, so that part is defensive
 - A score of `0.0` was treated as a missing score. It is a computed result
   meaning no impact, and falsy checks made it indistinguishable from never
   scored: the table and markdown printed `-` and `N/A` for it, the merge

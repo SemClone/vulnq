@@ -261,7 +261,11 @@ def test_a_merged_zero_score_is_not_overwritten():
 
 
 def test_a_bare_cvss_2_vector_is_kept():
-    """OSV publishes 2.0 without the CVSS: prefix, so prefix matching lost it."""
+    """The OSV schema allows CVSS_V2, which carries no CVSS: prefix.
+
+    Defensive: no live OSV record carries one today. Matching on the prefix
+    alone would silently drop the vector if one appeared.
+    """
     vuln = _osv_severity([{"type": "CVSS_V2", "score": "AV:L/AC:M/Au:N/C:P/I:P/A:P"}])
     assert vuln.cvss_vector == "AV:L/AC:M/Au:N/C:P/I:P/A:P"
     assert vuln.cvss_score is None
@@ -412,3 +416,68 @@ def test_the_table_renders_scores_to_one_decimal(capsys):
     out = capsys.readouterr().out
     assert "7.000000001" not in out
     assert "7.0" in out
+
+
+def test_the_table_prints_a_genuine_zero_rather_than_a_dash(capsys):
+    """The markdown path was pinned and the table was not, though the table is
+    where a falsy check first made a scored zero look unscored."""
+    from vulnq.cli import print_table
+
+    result = QueryResult(
+        query="q",
+        query_type=IdentifierType.PURL,
+        vulnerabilities=[
+            Vulnerability(
+                id="ZEROSCORE", source=VulnerabilitySource.OSV, summary="x", cvss_score=0.0
+            )
+        ],
+        query_time=datetime.datetime.now(),
+    )
+    print_table(result)
+    out = capsys.readouterr().out
+    assert "0.0" in out
+
+
+def test_github_derives_a_severity_from_a_genuine_zero():
+    """A vector scoring 0.0 is rated NONE. A falsy check left it UNKNOWN."""
+    from vulnq.clients.github import GitHubClient
+
+    node = {
+        "advisory": {
+            "ghsaId": "G",
+            "summary": "x",
+            "severity": "UNKNOWN",
+            "cvss": {
+                "score": 0.0,
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
+            },
+            "identifiers": [],
+            "references": [],
+        }
+    }
+    vuln = GitHubClient()._parse_vulnerability(node, None)
+    assert vuln.cvss_score == 0.0
+    assert vuln.severity is Severity.NONE
+
+
+def test_nvd_derives_a_severity_from_a_genuine_zero():
+    from vulnq.clients.nvd import NVDClient
+
+    data = {
+        "id": "CVE-1",
+        "descriptions": [],
+        "metrics": {
+            "cvssMetricV31": [
+                {
+                    "cvssData": {
+                        "baseScore": 0.0,
+                        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
+                        "baseSeverity": "",
+                    }
+                }
+            ]
+        },
+    }
+    vuln = NVDClient()._parse_vulnerability(data, None)
+    assert vuln.cvss_score == 0.0
+    assert vuln.severity is Severity.NONE

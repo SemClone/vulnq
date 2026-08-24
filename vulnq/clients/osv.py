@@ -16,10 +16,11 @@ from .base import BaseClient, UnsupportedQueryError
 MAX_PAGES = 10
 
 
-# OSV writes a 3.x or 4.0 vector with its CVSS: prefix, but publishes 2.0 as a
-# bare metric string like "AV:L/AC:M/Au:N/C:P/I:P/A:P". Matching only on the
-# prefix dropped those vectors entirely, so a 2.0 advisory reported neither a
-# score nor the vector a consumer could have scored itself.
+# OSV writes a 3.x or 4.0 vector with its CVSS: prefix. The schema also allows
+# CVSS_V2, which has no prefix and looks like "AV:L/AC:M/Au:N/C:P/I:P/A:P", so
+# matching on the prefix alone would drop it. No live OSV record carries one
+# today - a census of six ecosystems found CVSS_V3, CVSS_V4 and nothing else -
+# so this is defensive rather than a fix for observed data loss.
 _VECTOR = re.compile(r"^(CVSS:[\d.]+/)?[A-Za-z]+:[A-Za-z0-9.]+(/[A-Za-z]+:[A-Za-z0-9.]+)+$")
 
 
