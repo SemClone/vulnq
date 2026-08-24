@@ -1,7 +1,7 @@
 """OSV.dev API client."""
 
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from packageurl import PackageURL

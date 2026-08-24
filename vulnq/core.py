@@ -21,7 +21,6 @@ from .models import (
     IdentifierType,
     PackageInfo,
     QueryResult,
-    Severity,
     VersionMatch,
     Vulnerability,
     VulnerabilitySource,
