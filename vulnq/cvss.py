@@ -150,3 +150,47 @@ def base_score(vector: str) -> Optional[float]:
         combined *= 1.08
 
     return _roundup(min(combined, 10.0), version)
+
+
+# CVSS base scores run 0.0 to 10.0 on every version of the specification.
+_MIN_SCORE, _MAX_SCORE = 0.0, 10.0
+
+
+def coerce_score(value: object) -> Optional[float]:
+    """Turn a source's score field into a float, or into nothing.
+
+    Sources are inconsistent about the type. NVD and GitHub send a JSON number
+    that arrives as int or float depending on whether it has a fraction, OSV
+    sends a string, and VulnerableCode sends either. Comparing those raw is how
+    a str reaches cvss_to_severity and raises TypeError, which takes down the
+    whole source rather than the one advisory.
+
+    Anything that is not a number in range comes back as None, because a score
+    outside 0 to 10 is not a CVSS score whatever else it may be.
+
+    Args:
+        value: Whatever the source put in its score field
+
+    Returns:
+        The score as a float, or None if it is not a usable one
+    """
+    if value is None or isinstance(value, bool):
+        # bool is an int subclass, and float(True) is 1.0.
+        return None
+
+    if isinstance(value, (int, float)):
+        score = float(value)
+    elif isinstance(value, str):
+        try:
+            score = float(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if score != score or not _MIN_SCORE <= score <= _MAX_SCORE:
+        # NaN fails every comparison, including the range check above, so it is
+        # tested for explicitly rather than left to slip through.
+        return None
+
+    return score

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from packageurl import PackageURL
 
-from ..cvss import base_score
+from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
@@ -233,10 +233,10 @@ class OSVClient(BaseClient):
                     cvss_vector = score_val
                 continue
 
-            try:
-                cvss_score = float(score_val)
-            except (ValueError, TypeError):
+            numeric = coerce_score(score_val)
+            if numeric is None:
                 continue
+            cvss_score = numeric
             severity = self.cvss_to_severity(cvss_score)
             break
 

@@ -119,3 +119,48 @@ def test_repeating_a_temporal_metric_is_still_fine():
     """Only the base metrics decide a base score."""
     vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:F/E:H"
     assert base_score(vector) == 9.8
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (9.8, 9.8),
+        (10, 10.0),
+        (0, 0.0),
+        ("9.8", 9.8),
+        ("10", 10.0),
+        (" 7.5 ", 7.5),
+        (None, None),
+        ("", None),
+        ("N/A", None),
+        ("HIGH", None),
+        (True, None),
+        (False, None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (10.1, None),
+        (-0.1, None),
+        (99, None),
+        ([], None),
+        ({}, None),
+    ],
+)
+def test_coerce_score_takes_whatever_a_source_sends(raw, expected):
+    """Sources disagree about the type, and one bad value used to take the lot.
+
+    NVD and GitHub send a JSON number that arrives as int or float depending on
+    whether it has a fraction, OSV sends a string, VulnerableCode sends either.
+    A string reaching cvss_to_severity raised TypeError, which is not caught
+    per advisory, so a single odd record failed the whole source.
+    """
+    from vulnq.cvss import coerce_score
+
+    assert coerce_score(raw) == expected if expected is not None else coerce_score(raw) is None
+
+
+def test_a_bool_is_not_a_score():
+    """bool subclasses int, so float(True) is 1.0 and would score LOW."""
+    from vulnq.cvss import coerce_score
+
+    assert coerce_score(True) is None
+    assert coerce_score(False) is None

@@ -272,3 +272,143 @@ def test_a_numeric_score_is_still_read_as_a_number():
     vuln = _osv_severity([{"type": "CVSS_V3", "score": "7.5"}])
     assert vuln.cvss_score == 7.5
     assert vuln.severity is Severity.HIGH
+
+
+@pytest.mark.parametrize("raw", ["9.8", "N/A", "", "HIGH", True, float("nan"), 99, -1])
+def test_an_odd_score_from_github_does_not_fail_the_source(raw):
+    """A str reaching cvss_to_severity raised TypeError, which is not caught
+    per advisory, so one malformed record failed the whole GitHub query."""
+    from vulnq.clients.github import GitHubClient
+
+    node = {
+        "advisory": {
+            "ghsaId": "G",
+            "summary": "x",
+            "severity": "UNKNOWN",
+            "cvss": {"score": raw, "vectorString": None},
+            "identifiers": [],
+            "references": [],
+        }
+    }
+    vuln = GitHubClient()._parse_vulnerability(node, None)
+    assert vuln.cvss_score is None or isinstance(vuln.cvss_score, float)
+
+
+@pytest.mark.parametrize("raw", ["9.8", "10", "HIGH", True, float("nan"), 99])
+def test_an_odd_score_from_nvd_does_not_fail_the_source(raw):
+    from vulnq.clients.nvd import NVDClient
+
+    data = {
+        "id": "CVE-1",
+        "descriptions": [],
+        "metrics": {
+            "cvssMetricV31": [
+                {
+                    "cvssData": {
+                        "baseScore": raw,
+                        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                        "baseSeverity": "",
+                    }
+                }
+            ]
+        },
+    }
+    vuln = NVDClient()._parse_vulnerability(data, None)
+    assert vuln.cvss_score is None or isinstance(vuln.cvss_score, float)
+
+
+def _vc(scores):
+    from vulnq.clients.vulnerablecode import VulnerableCodeClient
+
+    return VulnerableCodeClient()._parse_vulnerability(
+        {"vulnerability_id": "VCID-1", "summary": "x", "references": [], "scores": scores}
+    )
+
+
+def test_vulnerablecode_matches_the_scoring_system_names_it_actually_sends():
+    """The code looked for "cvss_v3". VulnerableCode writes "cvssv3".
+
+    Its own severity_systems.py names them cvssv2, cvssv3, cvssv3.1, cvssv4,
+    so the CVSS branch never fired on a real record.
+    """
+    assert _vc([{"scoring_system": "cvssv3", "value": "9.8"}]).cvss_score == 9.8
+    assert _vc([{"scoring_system": "cvssv3.1", "value": "9.8"}]).cvss_score == 9.8
+    assert _vc([{"scoring_system": "CVSSV3", "value": "9.8"}]).cvss_score == 9.8
+
+
+def test_a_newer_cvss_row_wins_when_several_are_present():
+    """Both describe one finding, so the newer specification is the answer."""
+    vuln = _vc(
+        [
+            {"scoring_system": "cvssv2", "value": "5.0"},
+            {"scoring_system": "cvssv3", "value": "7.0"},
+            {"scoring_system": "cvssv3.1", "value": "9.8"},
+        ]
+    )
+    assert vuln.cvss_score == 9.8
+
+
+def test_an_epss_probability_is_not_a_cvss_score():
+    """EPSS runs 0 to 1. The old fallback took the first positive value from
+    any scoring system, so a 0.97 chance of exploitation was reported as a
+    CVSS score of 0.97, which reads as LOW."""
+    vuln = _vc([{"scoring_system": "epss", "value": "0.97"}])
+    assert vuln.cvss_score is None
+    assert vuln.severity is Severity.UNKNOWN
+
+
+def test_a_cvss_row_is_still_found_past_a_non_cvss_one():
+    vuln = _vc(
+        [{"scoring_system": "epss", "value": "0.97"}, {"scoring_system": "cvssv3", "value": "9.8"}]
+    )
+    assert vuln.cvss_score == 9.8
+
+
+def test_a_textual_rating_still_rates_when_no_cvss_row_parses():
+    """It is the only rating available, and it is not a score."""
+    vuln = _vc([{"scoring_system": "generic_textual", "value": "High"}])
+    assert vuln.cvss_score is None
+    assert vuln.severity is Severity.HIGH
+
+
+def test_scores_render_to_one_decimal(capsys):
+    """So the column lines up and a float artifact cannot reach the output."""
+    from vulnq.cli import print_markdown
+
+    result = QueryResult(
+        query="q",
+        query_type=IdentifierType.PURL,
+        vulnerabilities=[
+            Vulnerability(id="A", source=VulnerabilitySource.OSV, summary="x", cvss_score=7.0),
+            Vulnerability(id="B", source=VulnerabilitySource.OSV, summary="x", cvss_score=10.0),
+        ],
+        query_time=datetime.datetime.now(),
+    )
+    print_markdown(result)
+    out = capsys.readouterr().out
+    assert "**CVSS Score:** 7.0" in out
+    assert "**CVSS Score:** 10.0" in out
+
+
+def test_the_table_renders_scores_to_one_decimal(capsys):
+    """Same rule as the markdown, checked separately because it is a separate
+    code path: a bare str() prints 7.0 as 7.0 but leaves the column ragged the
+    moment a float artifact appears."""
+    from vulnq.cli import print_table
+
+    result = QueryResult(
+        query="q",
+        query_type=IdentifierType.PURL,
+        vulnerabilities=[
+            Vulnerability(id="SEVEN", source=VulnerabilitySource.OSV, summary="x", cvss_score=7.0),
+            Vulnerability(
+                id="ARTIFACT", source=VulnerabilitySource.OSV, summary="x", cvss_score=7.000000001
+            ),
+            Vulnerability(id="UNSCORED", source=VulnerabilitySource.OSV, summary="x"),
+        ],
+        query_time=datetime.datetime.now(),
+    )
+    print_table(result)
+    out = capsys.readouterr().out
+    assert "7.000000001" not in out
+    assert "7.0" in out

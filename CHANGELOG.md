@@ -36,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downstream gate as harmless. A genuine zero always carries the vector it was
   computed from, so a bare `0.0` is now an absent score. VulnerableCode had the
   same shape, defaulting a missing `value` to `0`
+- A score arriving as a string failed the whole source. Sources disagree about
+  the type: NVD and GitHub send a JSON number that is int or float depending on
+  whether it has a fraction, OSV sends a string, VulnerableCode sends either.
+  A string reached `cvss_to_severity` and raised `TypeError`, which is not
+  caught per advisory, so one odd record turned a working GitHub or NVD query
+  into a reported failure. Every source now goes through one coercion that
+  accepts int, float and numeric string, and rejects booleans, NaN, infinity
+  and anything outside the 0 to 10 range a CVSS score occupies
+- VulnerableCode's CVSS branch never ran. It matched the scoring system name
+  `cvss_v3`, where VulnerableCode writes `cvssv3` and `cvssv3.1`. Worse, the
+  fallback took the first positive value from any scoring system, so an EPSS
+  row, a probability between 0 and 1, could land in `cvss_score`: a 0.97
+  likelihood of exploitation was reported as a CVSS score of 0.97, which reads
+  as LOW. Only CVSS systems fill the CVSS field now, newest specification
+  first, and a textual rating from any system still sets the severity
+- Scores render to one decimal in the table and in markdown, so the column
+  lines up and a float artifact cannot reach the output
 - A merged record could carry one source's score beside another source's
   severity, reporting `9.8` next to `UNKNOWN`. A score, its vector and its
   severity are now taken together

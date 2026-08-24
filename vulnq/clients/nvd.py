@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
 
@@ -242,14 +243,14 @@ class NVDClient(BaseClient):
         if "cvssMetricV31" in metrics:
             cvss_data = metrics["cvssMetricV31"][0] if metrics["cvssMetricV31"] else {}
             cvss_v3 = cvss_data.get("cvssData", {})
-            cvss_score = cvss_v3.get("baseScore")
+            cvss_score = coerce_score(cvss_v3.get("baseScore"))
             cvss_vector = cvss_v3.get("vectorString")
             severity = self.normalize_severity(cvss_v3.get("baseSeverity", ""))
 
         elif "cvssMetricV30" in metrics:
             cvss_data = metrics["cvssMetricV30"][0] if metrics["cvssMetricV30"] else {}
             cvss_v3 = cvss_data.get("cvssData", {})
-            cvss_score = cvss_v3.get("baseScore")
+            cvss_score = coerce_score(cvss_v3.get("baseScore"))
             cvss_vector = cvss_v3.get("vectorString")
             severity = self.normalize_severity(cvss_v3.get("baseSeverity", ""))
 
@@ -257,7 +258,7 @@ class NVDClient(BaseClient):
         elif "cvssMetricV2" in metrics:
             cvss_data = metrics["cvssMetricV2"][0] if metrics["cvssMetricV2"] else {}
             cvss_v2 = cvss_data.get("cvssData", {})
-            cvss_score = cvss_v2.get("baseScore")
+            cvss_score = coerce_score(cvss_v2.get("baseScore"))
             cvss_vector = cvss_v2.get("vectorString")
             severity = self.normalize_severity(cvss_v2.get("baseSeverity", ""))
 

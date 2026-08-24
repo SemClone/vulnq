@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from packageurl import PackageURL
 
+from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from ..versions import evaluate_range
 from .base import BaseClient, RateLimitError, UnsupportedQueryError
@@ -389,7 +390,7 @@ class GitHubClient(BaseClient):
         cvss_vector = None
         cvss_data = advisory.get("cvss", {})
         if cvss_data:
-            cvss_score = cvss_data.get("score")
+            cvss_score = coerce_score(cvss_data.get("score"))
             cvss_vector = cvss_data.get("vectorString")
 
             # GitHub returns score 0.0 with a null vector for an advisory it
