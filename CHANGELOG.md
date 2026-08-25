@@ -158,7 +158,10 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   `log4j-core@2.14.1?type=jar`, which is how an SBOM writes it, returned
   nothing where the bare coordinate returns twelve advisories including
   Log4Shell, and `pkg:npm/@babel/traverse` returned nothing where the
-  percent-encoded form finds its advisory
+  percent-encoded form finds its advisory. Both endpoints are given the bare
+  coordinate: only the package one can be told to disregard qualifiers, so a
+  qualified PURL used to return findings stripped of every severity, score and
+  classification rather than no findings at all
 
 ### Changed
 - A source is now declared once, in `vulnq/sources.py`: its client, whether it

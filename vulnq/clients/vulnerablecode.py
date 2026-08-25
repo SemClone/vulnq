@@ -115,8 +115,15 @@ class VulnerableCodeClient(BaseClient):
         # matters too: pkg:npm/@babel/traverse finds nothing, %40babel finds
         # the advisory. So the canonical spelling is sent, and the instance is
         # asked to disregard the parts that only narrow the match.
+        # The advisory endpoint has no ignore_qualifiers_subpath option, and
+        # matches verbatim, so a qualifier costs the severities rather than
+        # the findings: log4j-core@2.14.1?type=jar returned seven findings
+        # with no score and no classification at all. Both endpoints are given
+        # the same bare coordinate.
+        bare = self._bare(purl)
+
         query = {
-            "purls": [self._canonical(purl)],
+            "purls": [bare],
             "details": True,
             "ignore_qualifiers_subpath": True,
         }
@@ -128,7 +135,7 @@ class VulnerableCodeClient(BaseClient):
             # ten requests a minute to learn nothing.
             return []
 
-        advisories = await self._collect("/v3/advisories/", {"purls": query["purls"]})
+        advisories = await self._collect("/v3/advisories/", {"purls": [bare]})
 
         return self._parse(affected, advisories, purl)
 
@@ -145,19 +152,36 @@ class VulnerableCodeClient(BaseClient):
         raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
 
     @staticmethod
-    def _canonical(purl: str) -> str:
-        """Return the PURL in the spelling the instance stores.
+    def _bare(purl: str) -> str:
+        """Return the coordinate the instance stores, without the trimmings.
+
+        Two separate spellings cost data. Percent-encoding: pkg:npm/@babel/x
+        finds nothing where %40babel finds the advisory. And qualifiers or a
+        subpath, which an SBOM routinely carries: the package endpoint can be
+        told to disregard them, but the advisory endpoint cannot and matches
+        verbatim, so a qualified PURL returns findings stripped of every
+        severity. Both are handled by sending the canonical name, version and
+        namespace alone.
 
         Args:
             purl: Package URL as the caller wrote it
 
         Returns:
-            The canonical form, or the input if it does not parse
+            The bare canonical coordinate, or the input if it does not parse
         """
         try:
-            return str(PackageURL.from_string(purl))
+            parsed = PackageURL.from_string(purl)
         except Exception:
             return purl
+
+        return str(
+            PackageURL(
+                type=parsed.type,
+                namespace=parsed.namespace,
+                name=parsed.name,
+                version=parsed.version,
+            )
+        )
 
     @staticmethod
     def _affected_records(packages: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -249,9 +273,14 @@ class VulnerableCodeClient(BaseClient):
         except RateLimitError as e:
             # The base client already recognises a 429. Renaming it here says
             # what would lift the limit, which the status alone does not.
+            remedy = (
+                "this token's rate limit has been reached"
+                if self.api_key
+                else "anonymous access is limited to ten requests a minute; set "
+                "VULNERABLECODE_API_KEY to raise it"
+            )
             raise RateLimitError(
-                f"{self.base_url} is throttling this client ({e}). Anonymous access is "
-                "limited to ten requests a minute; set VULNERABLECODE_API_KEY to raise it."
+                f"{self.base_url} is throttling this client ({e}): {remedy}."
             ) from e
         except aiohttp.ClientResponseError as e:
             if e.status in (401, 403) and not self.api_key:

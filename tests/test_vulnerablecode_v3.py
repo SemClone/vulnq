@@ -395,11 +395,39 @@ class TestTheThingsThatWereSilentlyLost:
         run(client, "pkg:npm/lodash@4.17.20?type=tgz")
         assert client.sent[0]["json"]["ignore_qualifiers_subpath"] is True
 
+    def test_the_advisory_endpoint_is_given_the_bare_coordinate(self):
+        """It has no ignore_qualifiers_subpath option and matches verbatim, so
+        a qualifier costs the severities rather than the findings: the live
+        instance returned seven findings for log4j-core@2.14.1?type=jar with
+        no score and no classification on any of them."""
+        client = wired(recorded("lodash"), recorded("lodash-advisories"))
+        run(client, "pkg:npm/lodash@4.17.20?type=tgz#sub/path")
+        for request in client.sent:
+            assert request["json"]["purls"] == ["pkg:npm/lodash@4.17.20"]
+
+    def test_a_scoped_name_stays_encoded_when_the_trimmings_are_stripped(self):
+        client = wired(recorded("lodash"), recorded("lodash-advisories"))
+        run(client, "pkg:npm/@babel/traverse@7.22.0?type=tgz")
+        assert client.sent[0]["json"]["purls"] == ["pkg:npm/%40babel/traverse@7.22.0"]
+
     def test_a_scoped_package_is_sent_percent_encoded(self):
         """pkg:npm/@babel/traverse finds nothing; %40babel finds the advisory."""
         client = wired(recorded("lodash"), recorded("lodash-advisories"))
         run(client, "pkg:npm/@babel/traverse@7.22.0")
-        assert client.sent[0]["json"]["purls"] == ["pkg:npm/%40babel/traverse@7.22.0"]
+        for request in client.sent:
+            assert request["json"]["purls"] == ["pkg:npm/%40babel/traverse@7.22.0"]
+
+    def test_the_throttle_message_does_not_assume_anonymity(self):
+        """Telling someone who set a token to set the token they set is noise."""
+        client = VulnerableCodeClient(api_key="secret-token")
+
+        async def _throttle(method, url, **kwargs):
+            raise RateLimitError("Rate limit exceeded.")
+
+        client._make_request = _throttle
+
+        with pytest.raises(RateLimitError, match="this token's rate limit"):
+            run(client)
 
     def test_an_unparseable_response_is_not_a_clean_scan(self):
         """If the shape moves again, as it did when v1 was withdrawn, every
