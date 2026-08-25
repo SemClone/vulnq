@@ -233,10 +233,15 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   cannot be ordered against a single version, are kept and grouped after them
   rather than interleaved by accident, as are wildcards like `nightly-0.28.x`
   that name a family rather than a release, and strings the ecosystem cannot
-  place against any other version. The lists are ordered again after several
-  sources are merged, since merging appends one onto another and the result
-  would otherwise be ordered by whichever source answered first. Output stays
-  reproducible
+  read at all. The lists are ordered again after several sources are merged,
+  since merging appends one onto another and the result would otherwise be
+  ordered by whichever source answered first. Output stays reproducible.
+
+  Distribution packages are deliberately left unranked. dpkg and rpm put an
+  epoch above everything and a revision above the release it revises, so
+  semver rules give a confident and wrong answer for `deb`, `rpm` and `apk`.
+  Their lists are deduplicated and deterministic but make no claim about
+  order, which is what the previous release did by accident
 
 ## [1.4.0] - 2026-08-17
 

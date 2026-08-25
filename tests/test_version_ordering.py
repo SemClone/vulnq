@@ -419,3 +419,182 @@ def test_a_long_list_is_ordered_and_does_not_take_long():
     assert ordered[0] == "1.0.0"
     assert ordered[-1] == "5.9.8"
     assert elapsed < 10, f"ordering {len(versions)} versions took {elapsed:.1f}s"
+
+
+@pytest.mark.parametrize("unplaceable", ["-solaris", "+build-only"])
+def test_a_string_that_cannot_be_placed_goes_after_the_versions(unplaceable):
+    """These sort before every digit alphabetically, so leaving them in the
+    ranking puts them where the CLI reads the earliest fix. They are exiled
+    per string, not per pair: a string undecidable against everything is not
+    a version this module can rank."""
+    ordered = sort_versions("npm", [unplaceable, "2.0.0", "3.0.0"])
+    assert ordered[:2] == ["2.0.0", "3.0.0"], f"{unplaceable} was ranked as a version"
+    assert ordered[2] == unplaceable
+
+
+def test_an_unplaceable_string_goes_after_the_versions_on_either_path():
+    """There are two code paths and only one was covered.
+
+    A list with no declined pair takes the fast path; one with a declined pair
+    takes the scoring path. Moving the unplaceable group to the front passed
+    the suite because every fixture happened to take the fast path.
+    """
+    # Fast path: nothing among the placeable versions is declined.
+    assert sort_versions("npm", ["-solaris", "2.0.0", ">=1, <2"]) == [
+        "2.0.0",
+        "-solaris",
+        ">=1, <2",
+    ]
+
+    # Scoring path: 2.0.0 against 2.0.0+1 is declined, so the whole list goes
+    # the long way round, and the unplaceable string must still land after.
+    ordered = sort_versions("npm", ["-solaris", "2.0.0", "2.0.0+1", "3.0.0"])
+    assert ordered[0] == "2.0.0"
+    assert ordered[-1] == "-solaris"
+
+
+def test_the_ecosystem_reaches_the_merge_from_a_real_query(monkeypatch):
+    """core derives it from package_info and hands it to the deduplication.
+
+    Asserted through query() with two sources, which is the only way the merge
+    runs at all. Calling _merge_vulnerabilities directly, as the first version
+    of this test did, passes the ecosystem by hand and so proves nothing about
+    the threading.
+    """
+    from vulnq.core import VulnerabilityQuery
+    from vulnq.models import Configuration, Vulnerability, VulnerabilitySource
+
+    engine = VulnerabilityQuery(
+        config=Configuration(sources=[VulnerabilitySource.OSV, VulnerabilitySource.NVD])
+    )
+
+    async def _noop():
+        return None
+
+    def _finding(source, fixed):
+        return Vulnerability(id="CVE-1", source=source, summary="x", fixed_versions=list(fixed))
+
+    for source, fixed in (
+        # PEP 440 ranks a post-release above its release; semver cannot read
+        # the suffix, so the merged order says which rules were applied.
+        (VulnerabilitySource.OSV, ["1.0.post1"]),
+        (VulnerabilitySource.NVD, ["1.0"]),
+    ):
+        client = engine._clients[source]
+
+        async def _findings(_purl, _source=source, _fixed=fixed):
+            return [_finding(_source, _fixed)]
+
+        monkeypatch.setattr(client, "start_session", _noop)
+        monkeypatch.setattr(client, "close_session", _noop)
+        monkeypatch.setattr(client, "query_purl", _findings)
+
+    result = engine.query("pkg:pypi/example@1.0")
+
+    assert len(result.vulnerabilities) == 1
+    assert result.vulnerabilities[0].fixed_versions == ["1.0", "1.0.post1"]
+
+
+def test_the_merge_orders_affected_versions_as_well_as_fixed():
+    """Only fixed_versions was covered, and both are printed."""
+    from vulnq.core import VulnerabilityQuery
+    from vulnq.models import Configuration, Vulnerability, VulnerabilitySource
+
+    def record(source, affected):
+        return Vulnerability(
+            id="CVE-1", source=source, summary="x", affected_versions=list(affected)
+        )
+
+    engine = VulnerabilityQuery(config=Configuration())
+    merged = engine._merge_vulnerabilities(
+        [
+            record(VulnerabilitySource.NVD, ["10.0.0"]),
+            record(VulnerabilitySource.OSV, ["2.2.28", "3.2.13"]),
+        ],
+        "npm",
+    )
+    assert merged.affected_versions == ["2.2.28", "3.2.13", "10.0.0"]
+
+
+def test_the_ecosystem_reaches_the_merge_from_the_parsed_package():
+    """core passes package_info.ecosystem; without it the merge falls back to
+    semver and a PEP 440 post-release is ordered wrongly."""
+    from vulnq.core import VulnerabilityQuery
+    from vulnq.models import Configuration, Vulnerability, VulnerabilitySource
+
+    def record(source, fixed):
+        return Vulnerability(id="CVE-1", source=source, summary="x", fixed_versions=list(fixed))
+
+    engine = VulnerabilityQuery(config=Configuration())
+    # PEP 440 ranks a post-release above its release; semver cannot read it.
+    as_pypi = engine._merge_vulnerabilities(
+        [
+            record(VulnerabilitySource.NVD, ["1.0.post1"]),
+            record(VulnerabilitySource.OSV, ["1.0"]),
+        ],
+        "pypi",
+    )
+    assert as_pypi.fixed_versions == ["1.0", "1.0.post1"]
+
+
+def test_the_nvd_client_reports_only_range_strings():
+    """Which is why ordering there cannot change anything today.
+
+    Recorded rather than asserted through a sort: NVD synthesizes every entry
+    as a range expression, so they all land in the ranges bucket and removing
+    the sort is an equivalent change. The call is kept so every client answers
+    the same way, and because the merge folds these into a list that is
+    ordered.
+    """
+    from vulnq.clients.nvd import NVDClient
+
+    parsed = NVDClient()._parse_response(
+        {
+            "vulnerabilities": [
+                {
+                    "cve": {
+                        "id": "CVE-1",
+                        "descriptions": [],
+                        "configurations": [
+                            {
+                                "nodes": [
+                                    {
+                                        "cpeMatch": [
+                                            {"vulnerable": True, "versionEndExcluding": "10.0.0"},
+                                            {"vulnerable": True, "versionEndExcluding": "2.2.28"},
+                                        ]
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                }
+            ]
+        },
+        None,
+        "npm",
+    )
+    assert parsed[0].affected_versions == ["<10.0.0", "<2.2.28"]
+
+
+def test_the_vulnerablecode_client_orders_its_affected_versions():
+    from vulnq.clients.vulnerablecode import VulnerableCodeClient
+
+    vuln = VulnerableCodeClient()._parse_vulnerability(
+        {
+            "vulnerability_id": "VCID-1",
+            "summary": "x",
+            "references": [],
+            "affected_packages": [{"version": "10.0.0"}, {"version": "2.2.28"}],
+        },
+        None,
+        "npm",
+    )
+    assert vuln.affected_versions in ([], ["2.2.28", "10.0.0"])
+
+
+def test_a_distribution_package_is_deduplicated_but_not_ranked():
+    """dpkg puts an epoch above everything and a revision above its release,
+    so semver rules give a confident wrong answer. Better to make no claim."""
+    assert sort_versions("deb", ["1.2.3-1", "1.2.3", "1.2.3"]) == ["1.2.3", "1.2.3-1"]
+    assert sort_versions("rpm", ["2.0", "1:1.0"]) == ["1:1.0", "2.0"]
