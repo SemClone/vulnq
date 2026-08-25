@@ -19,7 +19,6 @@ and a range we cannot parse is not evidence of safety.
 """
 
 import re
-from functools import cmp_to_key
 from typing import Any, Iterable, List, Optional, Tuple
 
 # Ecosystems whose versions follow PEP 440 rather than semver.
@@ -540,19 +539,42 @@ def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
     plain = [value for value in unique if _is_plain_version(value)]
     ranges = [value for value in unique if not _is_plain_version(value)]
 
-    def compare(left: str, right: str) -> int:
-        # compare_versions returns None for a pair it will not rank: a Maven
-        # calendar version like 2024.Q1.2 against 2024.Q1.12, or a build
-        # qualifier like 11.0.6+security-01 against 11.0.6. Treated as equal
-        # here, which leaves the lexicographic pre-sort to break the tie, so
-        # the result is deterministic.
-        #
-        # Exiling those to the end instead was tried and is worse: a version
-        # is unrankable because of one awkward neighbour, so 1.0.0 alongside
-        # 1.0.0+build would be sent behind 2.0.0 and the earliest fix would
-        # no longer be first. A local misordering inside a cluster the tool
-        # already calls undecidable is the smaller error.
-        return compare_versions(ecosystem, left, right) or 0
+    # cmp_to_key needs a total order, and compare_versions is not one: it
+    # returns None for a pair it declines to rank, and mapping that to "equal"
+    # breaks transitivity. Timsort then binary-searches among the apparent
+    # equals and never compares the decisive pair, so the damage is not
+    # confined to the undecidable ones. On live OSV data that put a release
+    # ahead of its own prereleases: 2.0.0 before 2.0.0-BETA, which the
+    # comparator itself orders the other way round.
+    #
+    # The order is built from the decisive verdicts instead. Each version is
+    # scored by how many others it is definitely greater than, which is a
+    # genuine total order, reproduces the ecosystem's ordering exactly wherever
+    # it is willing to give one, and leaves the lexicographic pre-sort to break
+    # the ties that remain.
+    #
+    # A string the ecosystem cannot place against any other is not a version it
+    # can rank, so it joins the ranges. Decided per string, not per pair:
+    # 1.0.0 is undecidable against 1.0.0+build yet perfectly placeable against
+    # 2.0.0, and exiling per pair sent the earliest fix to the back.
+    placeable = []
+    unplaceable = []
+    for value in plain:
+        others = [other for other in plain if other != value]
+        if not others or any(
+            compare_versions(ecosystem, value, other) is not None for other in others
+        ):
+            placeable.append(value)
+        else:
+            unplaceable.append(value)
 
-    plain.sort(key=cmp_to_key(compare))
-    return plain + ranges
+    # Scored before sorting rather than inside the key: list.sort empties the
+    # list while it runs, so a key that reads it sees nothing and every score
+    # comes out zero.
+    beats = {
+        value: sum(1 for other in placeable if compare_versions(ecosystem, value, other) == 1)
+        for value in placeable
+    }
+    placeable.sort(key=lambda value: beats[value])
+
+    return placeable + unplaceable + ranges

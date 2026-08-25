@@ -196,3 +196,176 @@ def test_debian_revisions_keep_a_deterministic_order_without_claiming_one():
     assert ordered[0] == "2.36-9"
     assert set(ordered[1:]) == {"2.36-9+deb12u10", "2.36-9+deb12u2"}
     assert sort_versions("deb", list(reversed(ordered))) == ordered
+
+
+def test_the_order_never_contradicts_the_comparator_itself():
+    """The property that matters, over lists taken from real advisories.
+
+    A comparator returning None for pairs it declines to rank is not a total
+    order, and cmp_to_key needs one. Mapping None to "equal" broke
+    transitivity, and timsort then binary-searched among the apparent equals
+    and never compared the decisive pair, so releases came out ahead of their
+    own prereleases: 2.0.0 before 2.0.0-BETA, which the comparator itself
+    orders the other way round.
+    """
+    import itertools
+
+    from vulnq.versions import compare_versions
+
+    cases = [
+        ("npm", ["2.0.0", "2.0.0+1", "2.0.0-rc.1"]),
+        ("maven", ["2.0.0", "2.0.0-ALPHA.1", "2.0.0-ALPHA.2", "2.0.0-BETA"]),
+        ("maven", ["1.18", "1.18-alpha"]),
+        ("maven", ["1.5-RC3", "1.5-rc2", "1.5"]),
+        ("pypi", ["2.2.28", "3.2.13", "4.0.4", "1.11.29", "10.0.0"]),
+        ("gem", ["1.0.0.rc.1", "1.0.0", "0.9.2", "1.0.0.pre2"]),
+    ]
+
+    for ecosystem, values in cases:
+        ordered = sort_versions(ecosystem, values)
+        position = {value: index for index, value in enumerate(ordered)}
+        for left, right in itertools.combinations(ordered, 2):
+            if compare_versions(ecosystem, left, right) == 1:
+                assert position[left] > position[right], (
+                    f"{ecosystem}: {left} is greater than {right} but was listed first "
+                    f"in {ordered}"
+                )
+
+
+def test_the_first_entry_is_never_beaten_by_a_later_one():
+    """What the CLI's "Fixed In" column asserts by showing three of them."""
+    from vulnq.versions import compare_versions
+
+    for ecosystem, values in [
+        ("npm", ["2.0.0", "2.0.0+1", "2.0.0-rc.1"]),
+        ("maven", ["2.0.0", "2.0.0-BETA"]),
+        ("pypi", ["10.0.0", "2.2.28", "1.22.1"]),
+    ]:
+        ordered = sort_versions(ecosystem, values)
+        assert not any(
+            compare_versions(ecosystem, ordered[0], other) == 1 for other in ordered[1:]
+        ), f"{ecosystem}: {ordered[0]} is later than something after it in {ordered}"
+
+
+def test_a_client_orders_its_fixed_versions_too():
+    """Only affected_versions was covered, and the CLI prints fixed_versions."""
+    from vulnq.clients.osv import OSVClient
+
+    vuln = OSVClient()._parse_vulnerability(
+        {
+            "id": "T",
+            "summary": "x",
+            "affected": [
+                {
+                    "ranges": [
+                        {
+                            "type": "ECOSYSTEM",
+                            "events": [
+                                {"introduced": "0"},
+                                {"fixed": "10.0.0"},
+                                {"fixed": "2.2.28"},
+                            ],
+                        }
+                    ]
+                }
+            ],
+        },
+        None,
+        "npm",
+    )
+    assert vuln.fixed_versions == ["2.2.28", "10.0.0"]
+
+
+def test_the_vulnerablecode_client_orders_its_fixed_versions():
+    """It reads a `version` from each fixed package, not a purl.
+
+    An assertion that allowed an empty list passed whatever the code did.
+    """
+    from vulnq.clients.vulnerablecode import VulnerableCodeClient
+
+    vuln = VulnerableCodeClient()._parse_vulnerability(
+        {
+            "vulnerability_id": "VCID-1",
+            "summary": "x",
+            "references": [],
+            "fixed_packages": [{"version": "10.0.0"}, {"version": "2.2.28"}],
+        },
+        None,
+        "npm",
+    )
+    assert vuln.fixed_versions == ["2.2.28", "10.0.0"]
+
+
+def test_github_reports_at_most_one_fixed_version_per_advisory():
+    """Which is why sorting there cannot reorder anything today.
+
+    Recorded rather than asserted through a sort: GitHub appends a single
+    firstPatchedVersion identifier, so a test claiming the client orders a
+    list would pass whatever the client did. The ordering that matters for
+    GitHub findings happens at the merge, which is covered below.
+    """
+    from vulnq.clients.github import GitHubClient
+
+    node = {
+        "advisory": {
+            "ghsaId": "GHSA-test",
+            "summary": "x",
+            "severity": "HIGH",
+            "identifiers": [],
+            "references": [],
+            "cvss": {"score": None, "vectorString": None},
+        },
+        "firstPatchedVersion": {"identifier": "10.0.0"},
+        "vulnerableVersionRange": "< 10.0.0",
+    }
+    assert GitHubClient()._parse_vulnerability(node, None, "npm").fixed_versions == ["10.0.0"]
+
+
+def test_merging_two_sources_leaves_the_versions_ordered():
+    """Each source orders its own list, but the merge appends one onto the
+    other, so the result was ordered only by which source answered first."""
+    from vulnq.core import VulnerabilityQuery
+    from vulnq.models import Configuration, Vulnerability, VulnerabilitySource
+
+    def record(source, fixed):
+        return Vulnerability(id="CVE-1", source=source, summary="x", fixed_versions=list(fixed))
+
+    engine = VulnerabilityQuery(config=Configuration())
+    merged = engine._merge_vulnerabilities(
+        [
+            record(VulnerabilitySource.NVD, ["10.0.0"]),
+            record(VulnerabilitySource.OSV, ["2.2.28", "3.2.13"]),
+        ],
+        "npm",
+    )
+    assert merged.fixed_versions == ["2.2.28", "3.2.13", "10.0.0"]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["<1.0.0", ">=2.2, <2.2.28", "= 1.0.0", "1.0.0 - 2.0.0", "*"],
+)
+def test_a_range_expression_is_recognised_as_one(expression):
+    """Asserted on the predicate directly.
+
+    Going through sort_versions hid the guard: a range the ecosystem also
+    declines to rank lands in the tail either way, so removing the marker
+    check left the test passing.
+    """
+    from vulnq.versions import _is_plain_version
+
+    assert not _is_plain_version(expression)
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0-rc.1", "1.0.0+build", "v1.2.3"])
+def test_a_single_version_is_not_mistaken_for_a_range(version):
+    from vulnq.versions import _is_plain_version
+
+    assert _is_plain_version(version)
+
+
+def test_a_range_expression_is_never_ranked_as_a_version():
+    """The marker check: a range beginning with < sorts before every digit."""
+    ordered = sort_versions("npm", ["<1.0.0", "2.0.0", "3.0.0"])
+    assert ordered[:2] == ["2.0.0", "3.0.0"], "a range was ranked as a version"
+    assert ordered[2] == "<1.0.0"

@@ -232,10 +232,11 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   comparisons already used for range evaluation. Range expressions, which
   cannot be ordered against a single version, are kept and grouped after them
   rather than interleaved by accident, as are wildcards like `nightly-0.28.x`
-  that name a family rather than a release. Where the ecosystem's own
-  comparison declines a pair, as it does for Debian revision suffixes and
-  Maven calendar versions, those two keep a deterministic order rather than
-  being ranked. Output stays reproducible
+  that name a family rather than a release, and strings the ecosystem cannot
+  place against any other version. The lists are ordered again after several
+  sources are merged, since merging appends one onto another and the result
+  would otherwise be ordered by whichever source answered first. Output stays
+  reproducible
 
 ## [1.4.0] - 2026-08-17
 
