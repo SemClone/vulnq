@@ -369,3 +369,53 @@ def test_a_range_expression_is_never_ranked_as_a_version():
     ordered = sort_versions("npm", ["<1.0.0", "2.0.0", "3.0.0"])
     assert ordered[:2] == ["2.0.0", "3.0.0"], "a range was ranked as a version"
     assert ordered[2] == "<1.0.0"
+
+
+def test_scoring_never_inverts_a_decisive_verdict_across_many_combinations():
+    """A Copeland score can in principle tie two versions the comparator does
+    order, if each beats a different subset. Searched for exhaustively across
+    four ecosystems' awkward idioms: prereleases, build metadata, Maven
+    calendar versions and qualifiers, Debian epochs and revisions."""
+    import itertools
+
+    from vulnq.versions import compare_versions
+
+    pools = {
+        "maven": ["1.0", "1.0-alpha", "2.0", "2.0-ALPHA.1", "2024.Q1.2", "1.0+build"],
+        "npm": ["1.0.0", "1.0.0-rc.1", "1.0.0+1", "2.0.0", "10.0.0"],
+        "gem": ["1.0.0", "1.0.0.pre2", "1.0.0.pre12", "0.9.2"],
+        "deb": ["2.36-9", "2.36-9+deb12u2", "2.36-9+deb12u10", "1:2.36-9"],
+    }
+
+    for ecosystem, pool in pools.items():
+        for size in (3, 4):
+            for combination in itertools.combinations(pool, size):
+                ordered = sort_versions(ecosystem, list(combination))
+                position = {value: index for index, value in enumerate(ordered)}
+                for left, right in itertools.combinations(ordered, 2):
+                    if compare_versions(ecosystem, left, right) == 1:
+                        assert (
+                            position[left] > position[right]
+                        ), f"{ecosystem}: {left} beats {right} but came first in {ordered}"
+
+
+def test_a_long_list_is_ordered_and_does_not_take_long():
+    """The scoring compares every pair, and a real PyPI advisory carries over
+    four hundred versions. Ordered correctly, and quickly enough not to matter.
+    """
+    import time
+
+    versions = [
+        f"{major}.{minor}.{patch}"
+        for major in range(1, 6)
+        for minor in range(10)
+        for patch in range(9)
+    ]
+
+    started = time.time()
+    ordered = sort_versions("pypi", versions)
+    elapsed = time.time() - started
+
+    assert ordered[0] == "1.0.0"
+    assert ordered[-1] == "5.9.8"
+    assert elapsed < 10, f"ordering {len(versions)} versions took {elapsed:.1f}s"
