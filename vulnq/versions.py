@@ -19,7 +19,8 @@ and a range we cannot parse is not evidence of safety.
 """
 
 import re
-from typing import Any, List, Optional, Tuple
+from functools import cmp_to_key
+from typing import Any, Iterable, List, Optional, Tuple
 
 # Ecosystems whose versions follow PEP 440 rather than semver.
 _PEP440_ECOSYSTEMS = {"pypi", "pip"}
@@ -486,3 +487,53 @@ def evaluate_range(ecosystem: Optional[str], version: str, vulnerable_range: str
             return False
 
     return True
+
+
+# A range expression carries a comparison or a separator. A plain version does
+# not, and only a plain version can be ordered against another.
+_RANGE_MARKERS = ("<", ">", "=", ",", " ", "*")
+
+
+def _is_plain_version(value: str) -> bool:
+    """Return whether a value is a single version rather than a range.
+
+    Args:
+        value: An entry from an affected or fixed version list
+
+    Returns:
+        True if it names one version
+    """
+    return bool(value) and not any(marker in value for marker in _RANGE_MARKERS)
+
+
+def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
+    """Order and deduplicate a version list the way its ecosystem orders.
+
+    These lists mix single versions with range expressions like
+    ">=2.2, <2.2.28", and only the first kind can be ordered. Plain versions
+    come first in the ecosystem's own order, then the ranges, so the first
+    entry of a fixed-versions list is the earliest fix rather than whichever
+    string sorted first: lexicographically 10.0.0 precedes 2.2.28.
+
+    Never raises, and never drops a value it cannot order.
+
+    Args:
+        ecosystem: PURL type, e.g. "npm" or "maven". None uses semver rules.
+        values: The versions to order
+
+    Returns:
+        A deduplicated list, ordered as far as the ecosystem allows
+    """
+    unique = sorted({value for value in values if isinstance(value, str) and value})
+
+    plain = [value for value in unique if _is_plain_version(value)]
+    ranges = [value for value in unique if not _is_plain_version(value)]
+
+    def compare(left: str, right: str) -> int:
+        # None means the pair cannot be ordered confidently. Treated as equal,
+        # which leaves the lexicographic pre-sort to break the tie, so the
+        # result is deterministic either way.
+        return compare_versions(ecosystem, left, right) or 0
+
+    plain.sort(key=cmp_to_key(compare))
+    return plain + ranges

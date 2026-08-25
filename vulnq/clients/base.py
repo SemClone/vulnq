@@ -140,6 +140,54 @@ class BaseClient(ABC):
         except ValueError:
             return None
 
+    @staticmethod
+    def _ecosystem_of(purl: Optional[str]) -> Optional[str]:
+        """Return the PURL type, which decides how versions are ordered.
+
+        Args:
+            purl: Package URL string, or None for a CPE or hash query
+
+        Returns:
+            The type, or None when there is no package to speak of
+        """
+        if not purl:
+            return None
+        try:
+            return PackageURL.from_string(purl).type
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_cwe_ids(values: Any) -> List[str]:
+        """Return CWE identifiers from whatever shape a source used.
+
+        Sources disagree: OSV writes a list of strings under
+        database_specific.cwe_ids, VulnerableCode a list of objects with a
+        cwe_id that may be a bare integer, and NVD a nested weakness
+        description. Anything that is not a CWE identifier is dropped rather
+        than reported as one.
+
+        Args:
+            values: The source's weakness field, in any of its shapes
+
+        Returns:
+            Deduplicated CWE identifiers, in the order the source gave them
+        """
+        found: List[str] = []
+        for value in values if isinstance(values, list) else []:
+            if isinstance(value, dict):
+                value = value.get("cwe_id") or value.get("cweId") or value.get("id")
+            if isinstance(value, int):
+                value = f"CWE-{value}"
+            if not isinstance(value, str):
+                continue
+            candidate = value.strip().upper()
+            if not candidate.startswith("CWE-"):
+                continue
+            if candidate not in found:
+                found.append(candidate)
+        return found
+
     def _begin_query(self) -> None:
         """Clear per-query state before a new lookup.
 

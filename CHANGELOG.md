@@ -214,6 +214,26 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   nothing changes unless it is set, and a value below one is refused at
   construction rather than deadlocking on `Semaphore(0)`
 
+## [Unreleased]
+
+### Fixed
+- `cwe_ids` was declared on every finding and always empty. The OSV and
+  VulnerableCode clients hardcoded it, under a comment claiming OSV does not
+  provide CWEs; it does, in `database_specific.cwe_ids`, which is where
+  GitHub-sourced advisories put it. Always empty, the field read as "this
+  advisory has no classification" rather than "we did not extract one". That
+  distinction carries weight: CWE-506 is Embedded Malicious Code and CWE-912
+  is Hidden Functionality, and together they separate a package that is
+  malware from one whose description merely mentions malicious input
+- Version lists were ordered lexicographically, so `10.0.0` came before
+  `2.2.28` and the first entry of a fixed-versions list was not the earliest
+  fix. The CLI prints the first three under "Fixed In", so that reading was
+  inviting an unnecessary major upgrade, or hiding a patch on the reader's own
+  line. They are now ordered by the ecosystem's own rules, reusing the
+  comparisons already used for range evaluation. Range expressions, which
+  cannot be ordered against a single version, are kept and grouped after them
+  rather than interleaved by accident. Output stays reproducible
+
 ## [1.4.0] - 2026-08-17
 
 ### Fixed

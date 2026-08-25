@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
+from ..versions import sort_versions
 from .base import BaseClient, UnsupportedQueryError
 
 
@@ -51,9 +52,9 @@ class NVDClient(BaseClient):
             # asked at all, which is not the same as being asked and coming
             # back clean.
             raise UnsupportedQueryError(f"NVD cannot resolve {purl} to a CPE")
-        return await self.query_cpe(cpe)
+        return await self.query_cpe(cpe, self._ecosystem_of(purl))
 
-    async def query_cpe(self, cpe: str) -> List[Vulnerability]:
+    async def query_cpe(self, cpe: str, ecosystem: Optional[str] = None) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
         Args:
@@ -88,7 +89,7 @@ class NVDClient(BaseClient):
                 "not fetched. Narrow the CPE to see them"
             )
 
-        return self._parse_response(response, self._cpe_version(cpe))
+        return self._parse_response(response, self._cpe_version(cpe), ecosystem)
 
     @staticmethod
     def _cpe_version(cpe: str) -> Optional[str]:
@@ -155,7 +156,10 @@ class NVDClient(BaseClient):
         return None
 
     def _parse_response(
-        self, response: Dict[str, Any], queried_version: Optional[str] = None
+        self,
+        response: Dict[str, Any],
+        queried_version: Optional[str] = None,
+        ecosystem: Optional[str] = None,
     ) -> List[Vulnerability]:
         """Parse NVD API response into Vulnerability objects.
 
@@ -177,7 +181,7 @@ class NVDClient(BaseClient):
         for item in items:
             try:
                 cve_data = item.get("cve", {})
-                vuln = self._parse_vulnerability(cve_data, queried_version)
+                vuln = self._parse_vulnerability(cve_data, queried_version, ecosystem)
                 if vuln:
                     vulnerabilities.append(vuln)
                 else:
@@ -205,7 +209,10 @@ class NVDClient(BaseClient):
         return vulnerabilities
 
     def _parse_vulnerability(
-        self, data: Dict[str, Any], queried_version: Optional[str] = None
+        self,
+        data: Dict[str, Any],
+        queried_version: Optional[str] = None,
+        ecosystem: Optional[str] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single CVE entry.
 
@@ -314,7 +321,7 @@ class NVDClient(BaseClient):
             cvss_vector=cvss_vector,
             summary=summary,
             details=details,
-            affected_versions=sorted(set(affected_versions)),
+            affected_versions=sort_versions(ecosystem, affected_versions),
             fixed_versions=[],  # NVD doesn't typically provide fixed versions
             published_date=published_date,
             modified_date=modified_date,
