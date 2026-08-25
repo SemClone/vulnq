@@ -69,6 +69,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every record inside credited a database that was never queried. It also left
   the VulnerableCode entry in the merge priority table unreachable
 
+### Fixed
+- Piping into vulnq did not work, and the README documented three ways to do
+  it. `--input` was declared `click.Path(exists=True)` without `allow_dash`, so
+  click rejected `-` as a nonexistent path before the branch that handles it
+  could run, and vulnq never read standard input without `--input` at all. Both
+  work now: `--input -` and a bare pipe. Blank lines and `#` comments in an
+  identifier list are ignored. A terminal with no arguments still gets the
+  usage error rather than waiting silently for input
+
+### Removed
+- The README's claim of config file support, and the `pyyaml` and `jsonschema`
+  dependencies that only existed to back it. There was no `--config`, no
+  `VULNQ_CONFIG`, no parser and no path anything looked in, so tokens or limits
+  put in the advertised file were silently ignored. vulnq is configured through
+  environment variables and flags
+
 ### Changed
 - `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
   list, so a caller can report what a filter removed instead of presenting a

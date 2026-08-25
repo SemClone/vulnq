@@ -191,7 +191,7 @@ performed, rather than an empty result that would read as a clean scan.
 
 ## Configuration
 
-vulnq can be configured via environment variables or config file:
+vulnq is configured through environment variables and command line flags. There is no config file.
 
 ```bash
 # API Keys (optional, for higher rate limits)

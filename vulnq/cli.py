@@ -1,7 +1,7 @@
 """Command-line interface for vulnq."""
 
 import sys
-from typing import Optional
+from typing import Iterable, List, Optional
 
 import click
 from rich.console import Console
@@ -13,6 +13,23 @@ from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity, VersionMatch
 
 console = Console()
+
+
+def _read_identifiers(stream: Iterable[str]) -> List[str]:
+    """Read one identifier per line, ignoring blanks and comments.
+
+    Args:
+        stream: Any iterable of lines, a file or standard input
+
+    Returns:
+        The identifiers, in the order given
+    """
+    identifiers = []
+    for line in stream:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            identifiers.append(line)
+    return identifiers
 
 
 def print_table(result: QueryResult, show_fixes: bool = False):
@@ -223,7 +240,14 @@ def print_markdown(result: QueryResult):
 @click.option("--sha256", help="Query using SHA256 hash")
 @click.option("--sha1", help="Query using SHA1 hash")
 @click.option("--md5", help="Query using MD5 hash")
-@click.option("--input", "-i", type=click.Path(exists=True), help="Input file with identifiers")
+@click.option(
+    "--input",
+    "-i",
+    # allow_dash, or click rejects "-" as a nonexistent path before the branch
+    # that handles it can run, and the documented pipe recipes all fail.
+    type=click.Path(exists=True, allow_dash=True),
+    help="Input file with identifiers, or - for standard input",
+)
 @click.option(
     "--format",
     "-f",
@@ -308,11 +332,17 @@ def main(
         queries.append(f"md5:{md5}")
     elif input:
         if input == "-":
-            queries.extend(line.strip() for line in sys.stdin if line.strip())
+            queries.extend(_read_identifiers(sys.stdin))
         else:
             with open(input) as f:
-                queries.extend(line.strip() for line in f if line.strip())
-    else:
+                queries.extend(_read_identifiers(f))
+    elif not sys.stdin.isatty():
+        # Being piped to without --input is how the documented recipes read,
+        # and how anyone would expect a tool like this to compose. A terminal
+        # still gets the usage error rather than a silent wait for input.
+        queries.extend(_read_identifiers(sys.stdin))
+
+    if not queries:
         console.print("[red]Error: No identifier provided[/red]")
         console.print("Run 'vulnq --help' for usage information")
         sys.exit(1)
