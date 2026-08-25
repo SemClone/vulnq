@@ -123,7 +123,27 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   put in the advertised file were silently ignored. vulnq is configured through
   environment variables and flags
 
+### Added
+- `VULNQ_DISABLED_SOURCES` and `--disable-source`. A source named there is not
+  queried whatever else selects it, and is reported in `sources_skipped` with
+  the reason rather than dropped, so an answer never reads as complete when a
+  feed was switched off. Disabling every selected source is a configuration
+  error, not a clean scan. Upstreams change hands, gate, or withdraw an API,
+  and turning one off should not need a code change
+
 ### Changed
+- A source is now declared once, in `vulnq/sources.py`: its client, whether it
+  joins the default fan-out, its merge priority. It used to be named across
+  seven files
+- VulnerableCode is an ordinary source. It replaced the whole fan-out rather
+  than joining it, which accounted for fifteen of those sites and a duplicate
+  query path in `core.py` that drifted from the one beside it. That drift is
+  how its findings came to be labelled as coming from OSV. `--sources
+  vulnerablecode` now joins the others, a combination the tool could not
+  express before, and `--use-vulnerablecode` keeps working as an alias for
+  querying only VulnerableCode
+- `Configuration.use_vulnerablecode` is replaced by selecting the source. The
+  `USE_VULNERABLECODE` environment variable keeps working
 - `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
   list, so a caller can report what a filter removed instead of presenting a
   shortened list as the whole answer. JSON output is unaffected

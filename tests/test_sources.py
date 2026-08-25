@@ -6,7 +6,8 @@ from click.testing import CliRunner
 
 from vulnq import NoSourcesConfiguredError, VulnerabilitySource
 from vulnq.cli import main
-from vulnq.core import FANOUT_SOURCES, VulnerabilityQuery
+from vulnq.core import VulnerabilityQuery
+from vulnq.sources import SELECTABLE_SOURCES
 from vulnq.models import Configuration, IdentifierType, QueryResult
 
 
@@ -31,10 +32,7 @@ class TestSourceEnum:
     def test_every_source_initializes_a_client(self):
         """Guards against a future member landing without a client."""
         for source in VulnerabilitySource:
-            if source is VulnerabilitySource.VULNERABLECODE:
-                engine = VulnerabilityQuery(config=Configuration(use_vulnerablecode=True))
-            else:
-                engine = VulnerabilityQuery(config=Configuration(sources=[source]))
+            engine = VulnerabilityQuery(config=Configuration(sources=[source]))
             assert source in engine._clients
 
 
@@ -55,26 +53,40 @@ class TestNoSourcesConfigured:
 
         message = str(excinfo.value)
         assert "requested: none" in message
-        for source in FANOUT_SOURCES:
+        for source in SELECTABLE_SOURCES:
             assert source.value in message
 
-    def test_vulnerablecode_alone_is_not_called_selectable(self):
-        """Listing it as available while rejecting it would contradict itself."""
+    def test_vulnerablecode_is_selectable_like_any_other_source(self):
+        """It used to replace the fan-out, so naming it here built nothing.
+
+        Selecting it now builds its client, and it can be combined with the
+        others rather than displacing them.
+        """
+        engine = VulnerabilityQuery(
+            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+        )
+        assert VulnerabilitySource.VULNERABLECODE in engine._clients
+
+        both = VulnerabilityQuery(
+            config=Configuration(
+                sources=[VulnerabilitySource.OSV, VulnerabilitySource.VULNERABLECODE]
+            )
+        )
+        assert set(both._clients) == {
+            VulnerabilitySource.OSV,
+            VulnerabilitySource.VULNERABLECODE,
+        }
+
+    def test_every_source_disabled_is_a_configuration_error(self):
+        """Disabling everything must not read as a package with no findings."""
         with pytest.raises(NoSourcesConfiguredError) as excinfo:
-            VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE]))
-
-        message = str(excinfo.value)
-        assert "requested: vulnerablecode" in message
-        assert "use_vulnerablecode" in message
-        assert "Selectable sources: osv, github, nvd." in message
-
-    def test_vulnerablecode_client_missing_raises(self):
-        """Flipping the flag after construction must not yield a silent empty."""
-        engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.OSV]))
-        engine.config.use_vulnerablecode = True
-
-        with pytest.raises(NoSourcesConfiguredError):
-            engine.query("pkg:npm/left-pad@1.3.0")
+            VulnerabilityQuery(
+                config=Configuration(
+                    sources=[VulnerabilitySource.OSV],
+                    disabled_sources=[VulnerabilitySource.OSV],
+                )
+            )
+        assert "Disabled by configuration: osv" in str(excinfo.value)
 
     def test_error_is_catchable_as_runtime_error(self):
         """Consumers catching RuntimeError keep working."""
@@ -107,7 +119,9 @@ class TestUnsupportedIdentifier:
 
     def test_vulnerablecode_path_reports_unsupported_identifier(self, monkeypatch):
         """The VulnerableCode path claimed the source was checked when it was not."""
-        engine = VulnerabilityQuery(config=Configuration(use_vulnerablecode=True))
+        engine = VulnerabilityQuery(
+            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+        )
 
         async def no_session(self):
             return None
@@ -168,10 +182,14 @@ class TestCLISourceHandling:
         monkeypatch.setattr("vulnq.cli.VulnerabilityQuery.__init__", fake_init)
         CliRunner().invoke(main, ["pkg:npm/express@4.17.1", "--sources", "vulnerablecode"])
 
-        assert captured["config"].use_vulnerablecode is True
+        assert captured["config"].sources == [VulnerabilitySource.VULNERABLECODE]
 
-    def test_mixed_sources_keep_the_fanout_ones(self, monkeypatch):
-        """Selecting VulnerableCode must not silently discard the rest."""
+    def test_vulnerablecode_can_now_be_combined_with_the_others(self, monkeypatch):
+        """It used to replace them: naming both left only the fan-out ones.
+
+        As an ordinary source it joins them, which is a combination the tool
+        could not express before.
+        """
         captured = {}
 
         def fake_init(self, config=None, verbose=False):
@@ -184,5 +202,7 @@ class TestCLISourceHandling:
             ["pkg:npm/express@4.17.1", "--sources", "osv", "--sources", "vulnerablecode"],
         )
 
-        assert captured["config"].use_vulnerablecode is True
-        assert captured["config"].sources == [VulnerabilitySource.OSV]
+        assert captured["config"].sources == [
+            VulnerabilitySource.OSV,
+            VulnerabilitySource.VULNERABLECODE,
+        ]

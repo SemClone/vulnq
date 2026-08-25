@@ -596,22 +596,34 @@ class TestCoreWiring:
         assert result.vulnerabilities[0].known_exploited is True
         assert result.enrichment[KEV_SOURCE].available is True
 
-    def test_enriches_vulnerablecode_path(self, tmp_path, monkeypatch):
-        """The VulnerableCode path returns early and must still be enriched."""
+    def test_enriches_findings_from_vulnerablecode(self, tmp_path, monkeypatch):
+        """It used to take its own path that returned early, and enrichment
+        had to be reached from both. There is one path now, and this pins that
+        a VulnerableCode-only query still gets enriched."""
         from vulnq.core import VulnerabilityQuery
 
-        config = Configuration(kev_snapshot=write_kev_snapshot(tmp_path), use_vulnerablecode=True)
+        config = Configuration(
+            kev_snapshot=write_kev_snapshot(tmp_path),
+            sources=[VulnerabilitySource.VULNERABLECODE],
+        )
         engine = VulnerabilityQuery(config=config)
+        client = engine._clients[VulnerabilitySource.VULNERABLECODE]
 
-        async def fake_vulnerablecode(identifier, id_type, package_info, result):
-            result.vulnerabilities = [make_vuln("CVE-2021-44228")]
-            return result
+        async def no_session():
+            return None
 
-        monkeypatch.setattr(engine, "_query_vulnerablecode", fake_vulnerablecode)
+        async def one_finding(purl):
+            return [make_vuln("CVE-2021-44228")]
+
+        monkeypatch.setattr(client, "start_session", no_session)
+        monkeypatch.setattr(client, "close_session", no_session)
+        monkeypatch.setattr(client, "query_purl", one_finding)
+
         result = engine.query("pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1")
 
         assert result.vulnerabilities[0].known_exploited is True
         assert result.enrichment[KEV_SOURCE].available is True
+        assert result.sources_checked == [VulnerabilitySource.VULNERABLECODE]
 
     def test_env_configures_snapshots(self, tmp_path, monkeypatch):
         """A subprocess caller can only reach configuration through the env."""

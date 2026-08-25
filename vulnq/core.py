@@ -7,12 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .clients import (
-    GitHubClient,
-    NVDClient,
-    OSVClient,
     RateLimitError,
     UnsupportedQueryError,
-    VulnerableCodeClient,
 )
 from .enrichment import Enricher, build_enricher
 from .models import (
@@ -25,6 +21,7 @@ from .models import (
     Vulnerability,
     VulnerabilitySource,
 )
+from .sources import BY_SOURCE, MERGE_PRIORITY, SELECTABLE_SOURCES, parse_disabled
 from .utils import detect_identifier_type, parse_identifier
 
 # How strong a claim each version-match state represents. Merging two records
@@ -37,15 +34,6 @@ _VERSION_MATCH_STRENGTH = {
     VersionMatch.SOURCE_FILTERED: 2,
     VersionMatch.AFFECTED: 2,
 }
-
-# Sources that can be named in `Configuration.sources` and queried in parallel.
-# VulnerableCode is deliberately absent: it replaces the fan-out rather than
-# joining it, and is enabled through `use_vulnerablecode`.
-FANOUT_SOURCES = (
-    VulnerabilitySource.OSV,
-    VulnerabilitySource.GITHUB,
-    VulnerabilitySource.NVD,
-)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -98,6 +86,7 @@ class VulnerabilityQuery:
             verbose: Enable verbose output
         """
         self.config = config or self.load_config()
+        self._disabled_sources = set(self.config.disabled_sources)
         self.verbose = verbose
         self._clients = self._initialize_clients()
         # Built once and reused: the readers hold their snapshots resident, and
@@ -117,9 +106,15 @@ class VulnerabilityQuery:
         config.github_token = os.environ.get("GITHUB_TOKEN")
         config.nvd_api_key = os.environ.get("NVD_API_KEY")
 
-        # Check if VulnerableCode should be used
+        # Kept for callers that already set it. It always meant "query only
+        # VulnerableCode", which is now just a selection like any other.
         if os.environ.get("USE_VULNERABLECODE", "").lower() == "true":
-            config.use_vulnerablecode = True
+            config.sources = [VulnerabilitySource.VULNERABLECODE]
+
+        # An operator switches a source off here when its terms change, its
+        # API is withdrawn, or it starts refusing them. A code change should
+        # not be the only way to stop querying something.
+        config.disabled_sources = list(parse_disabled(os.environ.get("VULNQ_DISABLED_SOURCES")))
 
         # Snapshot locations come from the environment because the primary
         # integration path is a subprocess call - a caller running
@@ -151,57 +146,37 @@ class VulnerabilityQuery:
         return config
 
     def _initialize_clients(self) -> Dict[VulnerabilitySource, Any]:
-        """Initialize API clients based on configuration."""
+        """Initialize API clients based on configuration.
+
+        Returns:
+            One client per selected, enabled source
+
+        Raises:
+            NoSourcesConfiguredError: If nothing is left to query, because an
+                empty client set would return an empty result that reads as a
+                clean bill of health
+        """
         clients = {}
+        self._disabled: Dict[str, str] = {}
 
-        # Initialize VulnerableCode if enabled
-        if self.config.use_vulnerablecode:
-            clients[VulnerabilitySource.VULNERABLECODE] = VulnerableCodeClient(
-                timeout=self.config.timeout,
-                max_concurrent=self.config.max_concurrent,
-                verbose=self.verbose,
-            )
-            # If using VulnerableCode, it's the only source
-            return clients
-
-        # Otherwise, initialize individual sources
-        if VulnerabilitySource.OSV in self.config.sources:
-            clients[VulnerabilitySource.OSV] = OSVClient(
-                timeout=self.config.timeout,
-                max_concurrent=self.config.max_concurrent,
-                verbose=self.verbose,
-            )
-
-        if VulnerabilitySource.GITHUB in self.config.sources:
-            clients[VulnerabilitySource.GITHUB] = GitHubClient(
-                api_key=self.config.github_token,
-                timeout=self.config.timeout,
-                max_concurrent=self.config.max_concurrent,
-                verbose=self.verbose,
-            )
-
-        if VulnerabilitySource.NVD in self.config.sources:
-            clients[VulnerabilitySource.NVD] = NVDClient(
-                api_key=self.config.nvd_api_key,
-                timeout=self.config.timeout,
-                max_concurrent=self.config.max_concurrent,
-                verbose=self.verbose,
-            )
+        for source in self.config.sources:
+            spec = BY_SOURCE.get(source)
+            if spec is None:
+                continue
+            if source in self._disabled_sources:
+                # Switched off by whoever runs vulnq. Recorded rather than
+                # dropped: a source that was asked for and not queried has to
+                # show up in the envelope, or the answer reads as complete.
+                self._disabled[source.value] = "disabled by configuration (VULNQ_DISABLED_SOURCES)"
+                continue
+            clients[source] = spec.build(self.config, self.verbose)
 
         if not clients:
-            # An empty client set would return an empty result, which reads as
-            # a clean bill of health. Fail here instead, while the caller can
-            # still see that nothing was ever going to be queried.
             requested = ", ".join(source.value for source in self.config.sources) or "none"
-            selectable = ", ".join(source.value for source in FANOUT_SOURCES)
+            selectable = ", ".join(source.value for source in SELECTABLE_SOURCES)
             hint = ""
-            if VulnerabilitySource.VULNERABLECODE in self.config.sources:
-                # Naming it in `sources` looks reasonable but does nothing;
-                # VulnerableCode replaces the fan-out rather than joining it.
-                hint = (
-                    " VulnerableCode is not part of the multi-source fan-out; "
-                    "enable it with use_vulnerablecode instead."
-                )
+            if self._disabled:
+                hint = f" Disabled by configuration: {', '.join(sorted(self._disabled))}."
             raise NoSourcesConfiguredError(
                 f"No queryable vulnerability sources configured (requested: {requested}). "
                 f"Selectable sources: {selectable}.{hint}"
@@ -249,20 +224,21 @@ class VulnerabilityQuery:
             query_time=datetime.utcnow(),
         )
 
+        # Switched off is a reason a source was not checked, so it belongs
+        # beside the others. Left out, a query with every source disabled but
+        # one would read as a complete answer from that one.
+        result.sources_skipped.update(self._disabled)
+
         # The sources are asked the spelling that was given, not the PEP 503
         # form. Normalization is an identity rule, not a transport one: GitHub
         # keys GHSA by the as-published PyPI name and folds case but not dots,
         # so asking it for plone-namedfile instead of plone.namedfile returns a
         # confident zero. package_info carries the canonical name for identity.
-        # If using VulnerableCode, query it; otherwise query all enabled
-        # sources in parallel and consolidate.
-        if self.config.use_vulnerablecode:
-            result = await self._query_vulnerablecode(identifier, id_type, package_info, result)
-        else:
-            vulnerabilities = await self._query_all_sources(
-                identifier, id_type, package_info, result
-            )
-            result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
+        # One path for every source. VulnerableCode used to take its own,
+        # duplicating this logic and drifting from it, which is how findings
+        # from it were labelled as coming from OSV.
+        vulnerabilities = await self._query_all_sources(identifier, id_type, package_info, result)
+        result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
 
         # Sources disagree about offsets, so without this one envelope can
         # carry NVD's naive timestamps beside OSV's offset-aware ones and a
@@ -277,71 +253,6 @@ class VulnerabilityQuery:
         # is stamped once and the VulnerableCode-only path is not skipped.
         if self._enricher:
             result = self._enricher.enrich(result)
-
-        return result
-
-    async def _query_vulnerablecode(
-        self,
-        identifier: str,
-        id_type: IdentifierType,
-        package_info: Optional[PackageInfo],
-        result: QueryResult,
-    ) -> QueryResult:
-        """Query VulnerableCode only.
-
-        Args:
-            identifier: Software identifier
-            id_type: Type of identifier
-            package_info: Parsed package information
-            result: Result object to populate
-
-        Returns:
-            Updated QueryResult
-        """
-        client = self._clients.get(VulnerabilitySource.VULNERABLECODE)
-        if not client:
-            # Reachable if use_vulnerablecode was flipped after construction,
-            # so the guard in _initialize_clients never saw it. Returning here
-            # silently would be the same clean-bill-of-health bug this module
-            # exists to prevent.
-            raise NoSourcesConfiguredError(
-                "VulnerableCode was selected but no client was initialized. "
-                "Set use_vulnerablecode before constructing VulnerabilityQuery."
-            )
-
-        try:
-            # Start session
-            await client.start_session()
-
-            if id_type == IdentifierType.PURL:
-                vulnerabilities = await client.query_purl(identifier)
-            elif id_type == IdentifierType.CPE:
-                vulnerabilities = await client.query_cpe(identifier)
-            else:
-                # Nothing was queried, so the source was not checked. Claiming
-                # otherwise turns an unanswerable query into a clean result.
-                result.errors.append(_unsupported_identifier_error(id_type))
-                return result
-
-            result.vulnerabilities = vulnerabilities
-            result.sources_checked.append(VulnerabilitySource.VULNERABLECODE)
-            # A partial answer still counts as an answer, but must not pass for
-            # a whole one.
-            for warning in getattr(client, "parse_warnings", []):
-                result.warnings.append(f"{VulnerabilitySource.VULNERABLECODE.value}: {warning}")
-
-        except UnsupportedQueryError as e:
-            # Cannot be asked, as opposed to asked and broken.
-            result.sources_skipped[VulnerabilitySource.VULNERABLECODE.value] = str(e)
-        except RateLimitError as e:
-            result.errors.append(f"vulnerablecode: {e}")
-        except Exception as e:
-            result.errors.append(f"vulnerablecode: {str(e)}")
-            if self.verbose:
-                print(f"VulnerableCode error: {e}")
-        finally:
-            # Clean up session
-            await client.close_session()
 
         return result
 
@@ -493,14 +404,7 @@ class VulnerabilityQuery:
             Merged vulnerability record
         """
         # Sort by source priority
-        source_priority = {
-            VulnerabilitySource.NVD: 1,
-            VulnerabilitySource.GITHUB: 2,
-            VulnerabilitySource.OSV: 3,
-            VulnerabilitySource.VULNERABLECODE: 4,
-        }
-
-        sorted_vulns = sorted(vulnerabilities, key=lambda v: source_priority.get(v.source, 99))
+        sorted_vulns = sorted(vulnerabilities, key=lambda v: MERGE_PRIORITY.get(v.source, 99))
 
         # Start with the highest priority vulnerability
         merged = sorted_vulns[0].model_copy(deep=True)

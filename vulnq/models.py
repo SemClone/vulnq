@@ -250,7 +250,13 @@ class Configuration(BaseModel):
     nvd_api_key: Optional[str] = Field(None, description="NVD API key")
     max_concurrent: int = Field(5, description="Max concurrent requests per source")
     timeout: int = Field(30, description="Request timeout in seconds")
-    use_vulnerablecode: bool = Field(False, description="Use VulnerableCode as primary source")
+    disabled_sources: List[VulnerabilitySource] = Field(
+        default_factory=list,
+        description=(
+            "Sources an operator has switched off, whatever else selects them. "
+            "They are reported in sources_skipped rather than dropped"
+        ),
+    )
     kev_snapshot: Optional[str] = Field(
         None, description="Path, directory, or URL of a published CISA KEV snapshot"
     )
