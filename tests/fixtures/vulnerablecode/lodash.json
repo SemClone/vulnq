@@ -1,0 +1,268 @@
+{
+ "count": 1,
+ "next": null,
+ "previous": null,
+ "results": [
+  {
+   "affected_by_vulnerabilities": [
+    {
+     "advisory_id": "GHSA-29mw-wpgm-hmr9",
+     "advisory_uid": "github_osv/GHSA-29mw-wpgm-hmr9",
+     "aliases": [
+      "CVE-2020-28500"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [
+      "pkg:npm/lodash@4.17.21"
+     ],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/github_osv/GHSA-29mw-wpgm-hmr9",
+     "risk_score": 2.4,
+     "ssvc_trees": [],
+     "summary": "Regular Expression Denial of Service (ReDoS) in lodash\nAll versions of package lodash prior to 4.17.21 are vulnerable to Regular Expression Denial of Service (ReDoS) via the `toNumber`, `trim` and `trimEnd` functions. \n\nSteps to reproduce (provided by reporter Liyuan Chen):\n```js\nvar lo = require('lodash');\n\nfunction build_blank(n) {\n    var ret = \"1\"\n    for (var i = 0; i < n; i++) {\n        ret += \" \"\n    }\n    return ret + \"1\";\n}\nvar s = build_blank(50000) var time0 = Date.now();\nlo.trim(s) \nvar time_cost0 = Date.now() - time0;\nconsole.log(\"time_cost0: \" + time_cost0);\nvar time1 = Date.now();\nlo.toNumber(s) var time_cost1 = Date.now() - time1;\nconsole.log(\"time_cost1: \" + time_cost1);\nvar time2 = Date.now();\nlo.trimEnd(s);\nvar time_cost2 = Date.now() - time2;\nconsole.log(\"time_cost2: \" + time_cost2);\n```",
+     "weighted_severity": 4.8
+    },
+    {
+     "advisory_id": "GHSA-35jh-r3h4-6jhm",
+     "advisory_uid": "github_osv/GHSA-35jh-r3h4-6jhm",
+     "aliases": [
+      "CVE-2021-23337"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [
+      "pkg:npm/lodash@4.17.21"
+     ],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/github_osv/GHSA-35jh-r3h4-6jhm",
+     "risk_score": 3.2,
+     "ssvc_trees": [],
+     "summary": "Command Injection in lodash\n`lodash` versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+     "weighted_severity": 6.5
+    },
+    {
+     "advisory_id": "GHSA-f23m-r3pf-42rh",
+     "advisory_uid": "github_osv/GHSA-f23m-r3pf-42rh",
+     "aliases": [
+      "CVE-2026-2950"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [
+      "pkg:npm/lodash@4.18.0"
+     ],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/github_osv/GHSA-f23m-r3pf-42rh",
+     "risk_score": 3.0,
+     "ssvc_trees": [
+      {
+       "decision": "Track",
+       "options": [
+        {
+         "Exploitation": "none"
+        },
+        {
+         "Automatable": "yes"
+        },
+        {
+         "Technical Impact": "partial"
+        },
+        {
+         "Mission Prevalence": "minimal"
+        },
+        {
+         "Public Well-being Impact": "material"
+        },
+        {
+         "Mission & Well-being": "medium"
+        }
+       ],
+       "source_url": "https://github.com/cisagov/vulnrichment/blob/develop/2026/2xxx/CVE-2026-2950.json",
+       "vector": "SSVCv2/E:N/A:Y/T:P/P:M/B:A/M:M/D:T/2026-04-01T13:43:14Z/"
+      }
+     ],
+     "summary": "lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`\n### Impact\n\nLodash versions 4.17.23 and earlier are vulnerable to prototype pollution in the `_.unset` and `_.omit` functions. The fix for [CVE-2025-13465](https://github.com/lodash/lodash/security/advisories/GHSA-xxjr-mmjv-4gpg) only guards against string key members, so an attacker can bypass the check by passing array-wrapped path segments. This allows deletion of properties from built-in prototypes such as `Object.prototype`, `Number.prototype`, and `String.prototype`.\n\nThe issue permits deletion of prototype properties but does not allow overwriting their original behavior.\n\n### Patches\n\nThis issue is patched in 4.18.0.\n\n### Workarounds\n\nNone. Upgrade to the patched version.",
+     "weighted_severity": 5.9
+    },
+    {
+     "advisory_id": "GHSA-r5fr-rjxr-66jc",
+     "advisory_uid": "github_osv/GHSA-r5fr-rjxr-66jc",
+     "aliases": [
+      "CVE-2026-4800"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [
+      "pkg:npm/lodash@4.18.0"
+     ],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/github_osv/GHSA-r5fr-rjxr-66jc",
+     "risk_score": 3.6,
+     "ssvc_trees": [
+      {
+       "decision": "Track",
+       "options": [
+        {
+         "Exploitation": "none"
+        },
+        {
+         "Automatable": "no"
+        },
+        {
+         "Technical Impact": "total"
+        },
+        {
+         "Mission Prevalence": "minimal"
+        },
+        {
+         "Public Well-being Impact": "material"
+        },
+        {
+         "Mission & Well-being": "medium"
+        }
+       ],
+       "source_url": "https://github.com/cisagov/vulnrichment/blob/develop/2026/4xxx/CVE-2026-4800.json",
+       "vector": "SSVCv2/E:N/A:N/T:T/P:M/B:A/M:M/D:T/2026-03-31T20:36:55Z/"
+      }
+     ],
+     "summary": "lodash vulnerable to Code Injection via `_.template` imports key names\n### Impact\n\nThe fix for [CVE-2021-23337](https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the `variable` option in `_.template` but did not apply the same validation to `options.imports` key names. Both paths flow into the same `Function()` constructor sink.\n\nWhen an application passes untrusted input as `options.imports` key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time.\n\nAdditionally, `_.template` uses `assignInWith` to merge imports, which enumerates inherited properties via `for..in`. If `Object.prototype` has been polluted by any other vector, the polluted keys are copied into the imports object and passed to `Function()`.\n\n### Patches\n\nUsers should upgrade to version 4.18.0.\n\nThe fix applies two changes:\n1. Validate `importsKeys` against the existing `reForbiddenIdentifierChars` regex (same check already used for the `variable` option)\n2. Replace `assignInWith` with `assignWith` when merging imports, so only own properties are enumerated\n\n### Workarounds\n\nDo not pass untrusted input as key names in `options.imports`. Only use developer-controlled, static key names.",
+     "weighted_severity": 7.3
+    },
+    {
+     "advisory_id": "GHSA-xxjr-mmjv-4gpg",
+     "advisory_uid": "github_osv/GHSA-xxjr-mmjv-4gpg",
+     "aliases": [
+      "CVE-2025-13465"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [
+      "pkg:npm/lodash@4.17.23"
+     ],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/github_osv/GHSA-xxjr-mmjv-4gpg",
+     "risk_score": 3.1,
+     "ssvc_trees": [
+      {
+       "decision": "Track",
+       "options": [
+        {
+         "Exploitation": "none"
+        },
+        {
+         "Automatable": "yes"
+        },
+        {
+         "Technical Impact": "partial"
+        },
+        {
+         "Mission Prevalence": "minimal"
+        },
+        {
+         "Public Well-being Impact": "material"
+        },
+        {
+         "Mission & Well-being": "medium"
+        }
+       ],
+       "source_url": "https://github.com/cisagov/vulnrichment/blob/develop/2025/13xxx/CVE-2025-13465.json",
+       "vector": "SSVCv2/E:N/A:Y/T:P/P:M/B:A/M:M/D:T/2026-01-21T19:43:10Z/"
+      }
+     ],
+     "summary": "Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions\n### Impact\n\nLodash versions 4.0.0 through 4.17.22 are vulnerable to prototype pollution in the `_.unset` and `_.omit` functions. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes. \n\nThe issue permits deletion of properties but does not allow overwriting their original behavior.  \n\n### Patches\n\nThis issue is patched on 4.17.23.",
+     "weighted_severity": 6.2
+    },
+    {
+     "advisory_id": "CVE-2025-13465",
+     "advisory_uid": "gitlab/npm/lodash/CVE-2025-13465",
+     "aliases": [
+      "GHSA-xxjr-mmjv-4gpg"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/gitlab/npm/lodash/CVE-2025-13465",
+     "risk_score": null,
+     "ssvc_trees": [
+      {
+       "decision": "Track",
+       "options": [
+        {
+         "Exploitation": "none"
+        },
+        {
+         "Automatable": "yes"
+        },
+        {
+         "Technical Impact": "partial"
+        },
+        {
+         "Mission Prevalence": "minimal"
+        },
+        {
+         "Public Well-being Impact": "material"
+        },
+        {
+         "Mission & Well-being": "medium"
+        }
+       ],
+       "source_url": "https://github.com/cisagov/vulnrichment/blob/develop/2025/13xxx/CVE-2025-13465.json",
+       "vector": "SSVCv2/E:N/A:Y/T:P/P:M/B:A/M:M/D:T/2026-01-21T19:43:10Z/"
+      }
+     ],
+     "summary": "Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions\nLodash versions 4.0.0 through 4.17.22 are vulnerable to prototype pollution in the `_.unset` and `_.omit` functions. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes.\n\nThe issue permits deletion of properties but does not allow overwriting their original behavior.",
+     "weighted_severity": null
+    },
+    {
+     "advisory_id": "CVE-2026-4800",
+     "advisory_uid": "gitlab/npm/lodash/CVE-2026-4800",
+     "aliases": [
+      "GHSA-r5fr-rjxr-66jc"
+     ],
+     "exploitability": 0.5,
+     "fixed_by_packages": [],
+     "fixed_in_patches": [],
+     "introduced_in_patches": [],
+     "resource_url": "http://public.vulnerablecode.io/advisories/gitlab/npm/lodash/CVE-2026-4800",
+     "risk_score": null,
+     "ssvc_trees": [
+      {
+       "decision": "Track",
+       "options": [
+        {
+         "Exploitation": "none"
+        },
+        {
+         "Automatable": "no"
+        },
+        {
+         "Technical Impact": "total"
+        },
+        {
+         "Mission Prevalence": "minimal"
+        },
+        {
+         "Public Well-being Impact": "material"
+        },
+        {
+         "Mission & Well-being": "medium"
+        }
+       ],
+       "source_url": "https://github.com/cisagov/vulnrichment/blob/develop/2026/4xxx/CVE-2026-4800.json",
+       "vector": "SSVCv2/E:N/A:N/T:T/P:M/B:A/M:M/D:T/2026-03-31T20:36:55Z/"
+      }
+     ],
+     "summary": "lodash vulnerable to Code Injection via `_.template` imports key names\nThe fix for [CVE-2021-23337](https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the `variable` option in `_.template` but did not apply the same validation to `options.imports` key names. Both paths flow into the same `Function()` constructor sink.\n\nWhen an application passes untrusted input as `options.imports` key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time.\n\nAdditionally, `_.template` uses `assignInWith` to merge imports, which enumerates inherited properties via `for..in`. If `Object.prototype` has been polluted by any other vector, the polluted keys are copied into the imports object and passed to `Function()`.",
+     "weighted_severity": null
+    }
+   ],
+   "fixing_vulnerabilities": [],
+   "latest_non_vulnerable_version": "4.18.0",
+   "next_non_vulnerable_version": "4.18.0",
+   "purl": "pkg:npm/lodash@4.17.20",
+   "risk_score": 3.6
+  }
+ ]
+}

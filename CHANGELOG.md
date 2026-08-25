@@ -131,6 +131,22 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   error, not a clean scan. Upstreams change hands, gate, or withdraw an API,
   and turning one off should not need a code change
 
+### Fixed
+- The VulnerableCode client called an API that no longer exists. Every v1
+  endpoint answers 404, and the 403 seen before that was a missing
+  `User-Agent: VCIO_API_AGENT` rather than a missing token, so
+  `--use-vulnerablecode` could not work for anybody. It now uses v3: one
+  request for which advisories affect the package and which versions fix it,
+  another for the severities, CVSS vectors and weaknesses, joined on the
+  advisory identifier. Anonymous access works and is throttled at ten requests
+  a minute, which is reported as throttling rather than as a failure;
+  `VULNERABLECODE_API_KEY` raises the limit and `VULNERABLECODE_URL` points at
+  a self-hosted instance
+- The client also read a `scores` key at a level the API has never served, so
+  even a reachable instance would have returned findings with no severity. Its
+  tests passed because they fed it that invented shape. Every payload under
+  `tests/fixtures/vulnerablecode` is now recorded from the live API
+
 ### Changed
 - A source is now declared once, in `vulnq/sources.py`: its client, whether it
   joins the default fan-out, its merge priority. It used to be named across

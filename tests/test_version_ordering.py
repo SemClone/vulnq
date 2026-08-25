@@ -276,26 +276,6 @@ def test_a_client_orders_its_fixed_versions_too():
     assert vuln.fixed_versions == ["2.2.28", "10.0.0"]
 
 
-def test_the_vulnerablecode_client_orders_its_fixed_versions():
-    """It reads a `version` from each fixed package, not a purl.
-
-    An assertion that allowed an empty list passed whatever the code did.
-    """
-    from vulnq.clients.vulnerablecode import VulnerableCodeClient
-
-    vuln = VulnerableCodeClient()._parse_vulnerability(
-        {
-            "vulnerability_id": "VCID-1",
-            "summary": "x",
-            "references": [],
-            "fixed_packages": [{"version": "10.0.0"}, {"version": "2.2.28"}],
-        },
-        None,
-        "npm",
-    )
-    assert vuln.fixed_versions == ["2.2.28", "10.0.0"]
-
-
 def test_github_reports_at_most_one_fixed_version_per_advisory():
     """Which is why sorting there cannot reorder anything today.
 
@@ -575,22 +555,6 @@ def test_the_nvd_client_reports_only_range_strings():
         "npm",
     )
     assert parsed[0].affected_versions == ["<10.0.0", "<2.2.28"]
-
-
-def test_the_vulnerablecode_client_orders_its_affected_versions():
-    from vulnq.clients.vulnerablecode import VulnerableCodeClient
-
-    vuln = VulnerableCodeClient()._parse_vulnerability(
-        {
-            "vulnerability_id": "VCID-1",
-            "summary": "x",
-            "references": [],
-            "affected_packages": [{"version": "10.0.0"}, {"version": "2.2.28"}],
-        },
-        None,
-        "npm",
-    )
-    assert vuln.affected_versions in ([], ["2.2.28", "10.0.0"])
 
 
 def test_a_distribution_package_is_deduplicated_but_not_ranked():

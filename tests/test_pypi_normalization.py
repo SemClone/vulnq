@@ -140,26 +140,6 @@ def test_no_client_normalizes_before_querying(monkeypatch):
     assert offenders == []
 
 
-def test_vulnerablecode_is_asked_the_purl_as_given():
-    """Same rule on the transport that puts the purl in a URL."""
-    import asyncio
-    import urllib.parse
-
-    from vulnq.clients.vulnerablecode import VulnerableCodeClient
-
-    sent = []
-    client = VulnerableCodeClient()
-
-    async def _capture(method, url, **kwargs):
-        sent.append(url)
-        return {"results": []}
-
-    client._make_request = _capture
-    asyncio.run(client.query_purl("pkg:pypi/plone.namedfile@6.0.0"))
-
-    assert urllib.parse.quote("pkg:pypi/plone.namedfile@6.0.0", safe="") in sent[0]
-
-
 def test_osv_is_asked_the_purl_as_given():
     """Same rule at the transport: send what the caller asked about."""
     import asyncio

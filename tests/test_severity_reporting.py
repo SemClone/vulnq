@@ -138,27 +138,6 @@ def test_vulnerablecode_findings_say_vulnerablecode():
     assert VulnerableCodeClient().source is VulnerabilitySource.VULNERABLECODE
 
 
-def test_vulnerablecode_findings_carry_the_label_into_the_envelope():
-    """The envelope contradicted itself: sources_checked said one thing.
-
-    Asserted on a parsed finding rather than on the request, because the
-    request never carried the label that was wrong.
-    """
-    payload = {
-        "results": [
-            {
-                "purl": "pkg:pypi/django@3.2.0",
-                "affected_by_vulnerabilities": [
-                    {"vulnerability_id": "VCID-1", "summary": "x", "references": []}
-                ],
-            }
-        ]
-    }
-    findings = VulnerableCodeClient()._parse_response(payload, "pkg:pypi/django@3.2.0")
-    assert findings
-    assert all(f.source is VulnerabilitySource.VULNERABLECODE for f in findings)
-
-
 def test_github_unscored_advisories_do_not_become_a_zero(monkeypatch):
     """GitHub sends score 0.0 with a null vector for what it never scored.
 
@@ -327,52 +306,6 @@ def _vc(scores):
     return VulnerableCodeClient()._parse_vulnerability(
         {"vulnerability_id": "VCID-1", "summary": "x", "references": [], "scores": scores}
     )
-
-
-def test_vulnerablecode_matches_the_scoring_system_names_it_actually_sends():
-    """The code looked for "cvss_v3". VulnerableCode writes "cvssv3".
-
-    Its own severity_systems.py names them cvssv2, cvssv3, cvssv3.1, cvssv4,
-    so the CVSS branch never fired on a real record.
-    """
-    assert _vc([{"scoring_system": "cvssv3", "value": "9.8"}]).cvss_score == 9.8
-    assert _vc([{"scoring_system": "cvssv3.1", "value": "9.8"}]).cvss_score == 9.8
-    assert _vc([{"scoring_system": "CVSSV3", "value": "9.8"}]).cvss_score == 9.8
-
-
-def test_a_newer_cvss_row_wins_when_several_are_present():
-    """Both describe one finding, so the newer specification is the answer."""
-    vuln = _vc(
-        [
-            {"scoring_system": "cvssv2", "value": "5.0"},
-            {"scoring_system": "cvssv3", "value": "7.0"},
-            {"scoring_system": "cvssv3.1", "value": "9.8"},
-        ]
-    )
-    assert vuln.cvss_score == 9.8
-
-
-def test_an_epss_probability_is_not_a_cvss_score():
-    """EPSS runs 0 to 1. The old fallback took the first positive value from
-    any scoring system, so a 0.97 chance of exploitation was reported as a
-    CVSS score of 0.97, which reads as LOW."""
-    vuln = _vc([{"scoring_system": "epss", "value": "0.97"}])
-    assert vuln.cvss_score is None
-    assert vuln.severity is Severity.UNKNOWN
-
-
-def test_a_cvss_row_is_still_found_past_a_non_cvss_one():
-    vuln = _vc(
-        [{"scoring_system": "epss", "value": "0.97"}, {"scoring_system": "cvssv3", "value": "9.8"}]
-    )
-    assert vuln.cvss_score == 9.8
-
-
-def test_a_textual_rating_still_rates_when_no_cvss_row_parses():
-    """It is the only rating available, and it is not a score."""
-    vuln = _vc([{"scoring_system": "generic_textual", "value": "High"}])
-    assert vuln.cvss_score is None
-    assert vuln.severity is Severity.HIGH
 
 
 def test_scores_render_to_one_decimal(capsys):

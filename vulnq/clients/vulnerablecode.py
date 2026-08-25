@@ -1,36 +1,93 @@
-"""VulnerableCode API client."""
+"""VulnerableCode API client.
 
-import urllib.parse
+Written against the v3 API, which is the only one the public instance serves.
+The v1 endpoints this client used to call are gone: `/api/packages/` answers
+404, and the 403 seen before that is a missing `User-Agent: VCIO_API_AGENT`
+rather than a missing token. Anonymous access works and is throttled at ten
+requests a minute; a token raises that.
+
+Two requests are needed per query, because the two endpoints carry different
+halves of the answer. `/api/v3/packages/` says which advisories affect the
+package and which versions fix it; `/api/v3/advisories/` carries the
+severities, the CVSS vectors and the weaknesses. Every shape below was
+recorded from the live API into tests/fixtures/vulnerablecode.
+"""
+
 from typing import Any, Dict, List, Optional
 
-from ..cvss import coerce_score
+import aiohttp
+from packageurl import PackageURL
+
+from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from ..versions import sort_versions
-from .base import BaseClient, UnsupportedQueryError
+from .base import BaseClient, MissingCredentialError, RateLimitError, UnsupportedQueryError
 
-# Preference order for a CVSS base score. Newest first, because a record
-# carrying both is describing the same finding under a newer specification.
-# Nothing outside this tuple may fill cvss_score: the identifiers are
-# VulnerableCode's own, from vulnerabilities/severity_systems.py.
+DEFAULT_BASE_URL = "https://public.vulnerablecode.io/api"
+
+# The public instance rejects any other value, whatever the token says, so it
+# is not optional and not a courtesy.
+REQUIRED_USER_AGENT = "VCIO_API_AGENT"
+
+# Which scoring systems may fill cvss_score, newest specification first. The
+# identifiers are VulnerableCode's own, from vulnerabilities/severity_systems.py.
+# Nothing outside this tuple qualifies: an EPSS row is a probability between
+# zero and one, and reporting 0.97 as a CVSS score reads as LOW.
 _CVSS_SYSTEMS = ("cvssv4", "cvssv3.1", "cvssv3", "cvssv2")
 
 
 class VulnerableCodeClient(BaseClient):
-    """Client for VulnerableCode aggregated vulnerability database."""
+    """Client for the VulnerableCode aggregated vulnerability database."""
+
+    def __init__(self, *args: Any, base_url: Optional[str] = None, **kwargs: Any) -> None:
+        """Initialize the client.
+
+        Args:
+            *args: Passed to BaseClient
+            base_url: API root, for an instance other than the public one
+            **kwargs: Passed to BaseClient
+        """
+        super().__init__(*args, **kwargs)
+        self._base_url = base_url.rstrip("/") if base_url else None
 
     @property
     def source(self) -> VulnerabilitySource:
-        """Return the vulnerability source identifier."""
-        # It aggregates other databases, but it is still the source that was
-        # asked and the one that answered. Labelling its findings as OSV
-        # contradicted sources_checked in the same envelope and credited data
-        # to a database that was never queried.
+        """Return the vulnerability source identifier.
+
+        It aggregates other databases, but it is still the source that was
+        asked and the one that answered. Labelling its findings as OSV
+        contradicted sources_checked in the same envelope.
+        """
         return VulnerabilitySource.VULNERABLECODE
 
     @property
     def base_url(self) -> str:
-        """Return the base URL for the API."""
-        return "https://public.vulnerablecode.io/api"
+        """Return the API root to query.
+
+        Returns:
+            The configured instance, or the public one
+        """
+        return self._base_url or DEFAULT_BASE_URL
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Return request headers.
+
+        The User-Agent is required by the public instance and is what the
+        earlier 403 was actually about. The token is optional and raises the
+        rate limit; VulnerableCode authenticates with Django REST Framework's
+        TokenAuthentication, so the scheme is "Token", not "Bearer".
+
+        Returns:
+            Headers for the request
+        """
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": REQUIRED_USER_AGENT,
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Token {self.api_key}"
+        return headers
 
     async def query_purl(self, purl: str) -> List[Vulnerability]:
         """Query vulnerabilities for a Package URL.
@@ -40,212 +97,214 @@ class VulnerableCodeClient(BaseClient):
 
         Returns:
             List of normalized Vulnerability objects
+
+        Raises:
+            MissingCredentialError: If the instance refuses the request and no
+                token is configured
+            RateLimitError: If the instance is throttling us
         """
         self._begin_query()
 
-        # URL encode the PURL
-        encoded_purl = urllib.parse.quote(purl, safe="")
-        url = f"{self.base_url}/packages/?purl={encoded_purl}"
+        packages = await self._post("/v3/packages/", {"purls": [purl], "details": True})
+        advisories = await self._post("/v3/advisories/", {"purls": [purl]})
 
-        # Failures propagate: the caller records them as errors and omits the
-        # source from sources_checked. Swallowing them here made an outage
-        # indistinguishable from a package with no known vulnerabilities.
-        response = await self._make_request("GET", url)
-        return self._parse_response(response, purl)
+        return self._parse(packages, advisories, purl)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
-
-        Note: VulnerableCode is keyed by PURL.
 
         Args:
             cpe: CPE string
 
         Raises:
-            UnsupportedQueryError: Always; VulnerableCode has no CPE lookup
+            UnsupportedQueryError: Always; VulnerableCode is keyed by PURL
         """
         self._begin_query()
         raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
 
-    def _parse_response(self, response: Dict[str, Any], purl: str) -> List[Vulnerability]:
-        """Parse VulnerableCode API response into Vulnerability objects.
+    async def _post(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Send one request, translating a refusal into something actionable.
 
         Args:
-            response: Raw API response
-            purl: Original PURL query
+            path: Path below the API root
+            body: JSON request body
+
+        Returns:
+            The decoded response
+
+        Raises:
+            MissingCredentialError: If refused and no token is configured
+            RateLimitError: If throttled
+        """
+        try:
+            return await self._make_request(
+                "POST", f"{self.base_url}{path}", json=body, headers=self._get_headers()
+            )
+        except aiohttp.ClientResponseError as e:
+            if e.status == 429:
+                # Anonymous access is ten requests a minute. Saying so is more
+                # use than relaying the status, because a token lifts it.
+                raise RateLimitError(
+                    f"{self.base_url} is throttling this client. Anonymous access is "
+                    "limited; set VULNERABLECODE_API_KEY for a higher rate."
+                ) from e
+            if e.status in (401, 403) and not self.api_key:
+                raise MissingCredentialError(
+                    f"{self.base_url} refused this request. If the instance requires a "
+                    "token, set VULNERABLECODE_API_KEY or pass --vulnerablecode-api-key."
+                ) from e
+            raise
+
+    def _parse(
+        self, packages: Dict[str, Any], advisories: Dict[str, Any], purl: str
+    ) -> List[Vulnerability]:
+        """Join the two responses into findings.
+
+        The package response says which advisories apply and which versions fix
+        them; the advisory response carries the severities and weaknesses. They
+        are joined on advisory_id.
+
+        Args:
+            packages: Response from /v3/packages/
+            advisories: Response from /v3/advisories/
+            purl: The PURL that was queried
 
         Returns:
             List of Vulnerability objects
         """
-        vulnerabilities = []
+        detail = {
+            record["advisory_id"]: record
+            for record in advisories.get("results") or []
+            if isinstance(record, dict) and record.get("advisory_id")
+        }
 
-        # VulnerableCode returns a list of packages
-        results = response.get("results", [])
-        if not results:
-            return vulnerabilities
+        ecosystem = self._ecosystem_of(purl)
+        queried_version = self._queried_version(purl)
 
-        # Get the first matching package
-        package_data = results[0] if results else {}
-
-        # Process affected_by_vulnerabilities
-        affecting = package_data.get("affected_by_vulnerabilities", [])
-        parse_failures = 0
-        last_error = ""
-
-        for vuln_data in affecting:
-            try:
-                vuln = self._parse_vulnerability(
-                    vuln_data,
-                    queried_version=self._queried_version(purl),
-                    ecosystem=self._ecosystem_of(purl),
-                )
-                if vuln:
-                    vulnerabilities.append(vuln)
-                else:
-                    # VulnerableCode has already filtered by version, so a
-                    # record that yields nothing here is malformed rather than
-                    # inapplicable.
-                    parse_failures += 1
-            except Exception as e:
-                parse_failures += 1
-                last_error = str(e)
-                if self.verbose:
-                    print(f"Error parsing VulnerableCode vulnerability: {e}")
+        findings = []
+        for result in packages.get("results") or []:
+            if not isinstance(result, dict):
+                # Without details=True the endpoint returns bare PURL strings.
                 continue
+            for affected in result.get("affected_by_vulnerabilities") or []:
+                if not isinstance(affected, dict):
+                    continue
+                vuln = self._build(affected, detail, ecosystem, queried_version)
+                if vuln:
+                    findings.append(vuln)
 
-        # Every record failing to parse means the response shape changed, not
-        # that the package is clean.
-        if affecting and parse_failures == len(affecting):
-            raise RuntimeError(
-                f"VulnerableCode returned {len(affecting)} records but none could be parsed"
-            )
+        return findings
 
-        # Below that threshold the query still has an answer, just not a whole
-        # one. Say so rather than handing back a short list that looks complete.
-        self._note_dropped_records(parse_failures, len(affecting), last_error)
-
-        # Also check fixing_vulnerabilities to get fixed version info
-        fixed_vulns = {}
-        for vuln_data in package_data.get("fixing_vulnerabilities", []):
-            vuln_id = vuln_data.get("vulnerability_id")
-            if vuln_id:
-                fixed_vulns[vuln_id] = package_data.get("version", "")
-
-        # Update fixed versions
-        for vuln in vulnerabilities:
-            if vuln.id in fixed_vulns:
-                vuln.fixed_versions.append(fixed_vulns[vuln.id])
-
-        return vulnerabilities
-
-    def _parse_vulnerability(
+    def _build(
         self,
-        data: Dict[str, Any],
-        queried_version: Optional[str] = None,
-        ecosystem: Optional[str] = None,
+        affected: Dict[str, Any],
+        detail: Dict[str, Dict[str, Any]],
+        ecosystem: Optional[str],
+        queried_version: Optional[str],
     ) -> Optional[Vulnerability]:
-        """Parse a single vulnerability entry.
+        """Turn one affected-advisory record into a finding.
 
         Args:
-            data: Raw vulnerability data
-            queried_version: Version pinned by the query, if any
+            affected: An entry from affected_by_vulnerabilities
+            detail: Advisory records from /v3/advisories/, keyed by advisory_id
             ecosystem: PURL type, which decides how versions are ordered
+            queried_version: The version asked about, if any
 
         Returns:
-            Vulnerability object or None if parsing fails
+            A Vulnerability, or None if the record carries no identifier
         """
-        # Get vulnerability ID
-        vuln_id = data.get("vulnerability_id", "")
-        if not vuln_id:
+        advisory_id = affected.get("advisory_id")
+        if not advisory_id:
             return None
 
-        # Get aliases (CVE, GHSA, etc.)
-        aliases = data.get("aliases", [])
-
-        # Parse severity
-        # VulnerableCode provides severity scores
-        severity = Severity.UNKNOWN
-        cvss_score = None
-
-        # VulnerableCode carries several scoring systems per vulnerability and
-        # names them without an underscore. Matching "cvss_v3" meant the branch
-        # below never fired on a real record.
-        #
-        # Only CVSS systems may fill a CVSS field. The fallback used to take
-        # the first system with a positive value, which let an EPSS row - a
-        # probability between 0 and 1 - land in cvss_score as if it were a
-        # base score, turning a 0.97 likelihood of exploitation into "LOW".
-        scores = data.get("scores", [])
-        for system in _CVSS_SYSTEMS:
-            for score_data in scores:
-                if not isinstance(score_data, dict):
-                    continue
-                if str(score_data.get("scoring_system", "")).lower() != system:
-                    continue
-                numeric = coerce_score(score_data.get("value"))
-                if numeric is None:
-                    continue
-                cvss_score = numeric
-                severity = self.cvss_to_severity(cvss_score)
-                break
-            if cvss_score is not None:
-                break
-
-        # A textual rating from any system is still a rating, and is the only
-        # one available when no CVSS row parsed.
-        if severity is Severity.UNKNOWN:
-            for score_data in scores:
-                if not isinstance(score_data, dict):
-                    continue
-                value = score_data.get("value")
-                if isinstance(value, str) and coerce_score(value) is None:
-                    rated = self.normalize_severity(value)
-                    if rated is not Severity.UNKNOWN:
-                        severity = rated
-                        break
-
-        # Get summary
-        summary = data.get("summary", "")
-        if not summary:
-            summary = f"Vulnerability {vuln_id}"
-
-        # Get references
-        references = []
-        for ref in data.get("references", []):
-            if "url" in ref:
-                references.append(ref["url"])
-
-        # Get affected versions
-        affected_versions = []
-        for affected_package in data.get("affected_packages", []):
-            version = affected_package.get("version", "")
-            if version:
-                affected_versions.append(version)
-
-        # Get fixed versions
-        fixed_versions = []
-        for fixed_package in data.get("fixed_packages", []):
-            version = fixed_package.get("version", "")
-            if version:
-                fixed_versions.append(version)
+        full = detail.get(advisory_id, {})
+        severity, score, vector = self._rate(full.get("severities") or [])
 
         return Vulnerability(
-            id=vuln_id,
+            id=advisory_id,
             source=self.source,
             severity=severity,
-            cvss_score=cvss_score,
-            cvss_vector=None,  # VulnerableCode doesn't provide vector strings
-            summary=summary,
-            details=data.get("description", ""),
-            affected_versions=sort_versions(ecosystem, affected_versions),
-            fixed_versions=sort_versions(ecosystem, fixed_versions),
-            published_date=None,  # VulnerableCode doesn't provide dates in this endpoint
-            modified_date=None,
-            references=references,
+            cvss_score=score,
+            cvss_vector=vector,
+            summary=(affected.get("summary") or full.get("summary") or "")[:200],
+            details=affected.get("summary") or full.get("summary") or "",
+            affected_versions=[],
+            fixed_versions=sort_versions(ecosystem, self._fixed(affected)),
+            references=[
+                reference["url"]
+                for reference in full.get("references") or []
+                if isinstance(reference, dict) and reference.get("url")
+            ],
+            cwe_ids=self._normalize_cwe_ids(full.get("weaknesses")),
+            aliases=list(affected.get("aliases") or full.get("aliases") or []),
+            # VulnerableCode answers for the exact PURL it was given, so a
+            # finding it returns is about the version that was asked about.
             version_match=(
                 VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED
             ),
-            # VulnerableCode serializes these as objects carrying a cwe_id.
-            cwe_ids=self._normalize_cwe_ids(data.get("weaknesses")),
-            aliases=aliases,
         )
+
+    @staticmethod
+    def _fixed(affected: Dict[str, Any]) -> List[str]:
+        """Return the versions that fix this advisory.
+
+        `fixed_by_packages` is a list of PURL strings rather than versions.
+
+        Args:
+            affected: An entry from affected_by_vulnerabilities
+
+        Returns:
+            The fixing versions
+        """
+        versions = []
+        for entry in affected.get("fixed_by_packages") or []:
+            if not isinstance(entry, str):
+                continue
+            try:
+                version = PackageURL.from_string(entry).version
+            except Exception:
+                continue
+            if version:
+                versions.append(version)
+        return versions
+
+    def _rate(self, severities: List[Any]) -> tuple:
+        """Choose the rating to report, and the vector it came from.
+
+        Only CVSS systems may fill a CVSS field, newest specification first.
+        An EPSS row is a probability between zero and one, and reporting 0.97
+        as a base score reads as LOW.
+
+        Args:
+            severities: The advisory's severities array
+
+        Returns:
+            Tuple of (severity, score, vector)
+        """
+        rows = [row for row in severities if isinstance(row, dict)]
+
+        for system in _CVSS_SYSTEMS:
+            for row in rows:
+                if str(row.get("scoring_system", "")).lower() != system:
+                    continue
+                vector = row.get("scoring_elements") or None
+                score = coerce_score(row.get("value"))
+                if score is None and vector:
+                    # The vector is authoritative when a value is missing or
+                    # unusable, and computing it is better than reporting none.
+                    score = base_score(vector)
+                if score is not None:
+                    return self.cvss_to_severity(score), score, vector
+                if vector:
+                    # A 4.0 vector cannot be scored here, but a consumer can.
+                    return Severity.UNKNOWN, None, vector
+
+        # No CVSS row parsed, so a textual rating is the only one available.
+        for row in rows:
+            value = row.get("value")
+            if isinstance(value, str) and coerce_score(value) is None:
+                rated = self.normalize_severity(value)
+                if rated is not Severity.UNKNOWN:
+                    return rated, None, None
+
+        return Severity.UNKNOWN, None, None

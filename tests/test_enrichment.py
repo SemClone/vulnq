@@ -20,8 +20,13 @@ from vulnq.enrichment import (
 )
 from vulnq.enrichment.epss import EPSS_SOURCE
 from vulnq.enrichment.kev import KEV_MIN_PLAUSIBLE_RECORDS, KEV_SOURCE
-from vulnq.models import Configuration, QueryResult, Vulnerability, VulnerabilitySource
-from vulnq.models import IdentifierType
+from vulnq.models import (
+    Configuration,
+    IdentifierType,
+    QueryResult,
+    Vulnerability,
+    VulnerabilitySource,
+)
 
 
 def make_vuln(vuln_id="CVE-2021-44228", aliases=None, source=VulnerabilitySource.OSV):

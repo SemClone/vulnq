@@ -74,19 +74,6 @@ def test_an_advisory_with_no_database_specific_block_does_not_raise():
     assert vuln.cwe_ids == []
 
 
-def test_vulnerablecode_reads_its_weaknesses():
-    """It serializes them as objects carrying a cwe_id."""
-    vuln = VulnerableCodeClient()._parse_vulnerability(
-        {
-            "vulnerability_id": "VCID-1",
-            "summary": "x",
-            "references": [],
-            "weaknesses": [{"cwe_id": 506, "name": "Embedded Malicious Code"}],
-        }
-    )
-    assert vuln.cwe_ids == ["CWE-506"]
-
-
 def test_malware_is_separable_from_a_description_mentioning_malice():
     """The point of the field, stated as the test.
 
