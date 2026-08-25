@@ -143,7 +143,23 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   express before, and `--use-vulnerablecode` keeps working as an alias for
   querying only VulnerableCode
 - `Configuration.use_vulnerablecode` is replaced by selecting the source. The
-  `USE_VULNERABLECODE` environment variable keeps working
+  `USE_VULNERABLECODE` environment variable and `--use-vulnerablecode` keep
+  working, and still win over an explicit `--sources`, as they did before
+- `Configuration` now refuses unknown keys. pydantic drops them by default, so
+  `Configuration(use_vulnerablecode=True)` against this release, or a plain
+  typo like `tiemout=30`, would have been accepted in silence and the caller
+  would have got defaults they did not ask for
+- A VulnerableCode-only query is now deduplicated and merged like every other
+  source. It used to return records raw, so two records aliasing one CVE came
+  back twice. They are folded into one now, and the ordering is by severity
+  rather than the order the client emitted them
+- Merging two records for one advisory never lowers a severity. Where neither
+  carries a score to derive a rating from, the records simply disagree, and
+  taking the first meant a HIGH could vanish into a LOW and then be removed by
+  a severity filter
+- An unknown name in `VULNQ_DISABLED_SOURCES` or `--disable-source` is refused
+  rather than ignored. Whoever wrote `gitub` believes GitHub is switched off,
+  and ignoring the typo leaves it quietly queried
 - `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
   list, so a caller can report what a filter removed instead of presenting a
   shortened list as the whole answer. JSON output is unaffected

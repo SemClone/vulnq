@@ -11,7 +11,7 @@ from rich.text import Text
 from . import __version__
 from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity, VersionMatch, VulnerabilitySource
-from .sources import parse_disabled
+from .sources import UnknownSourceError, parse_disabled
 
 console = Console()
 
@@ -301,7 +301,7 @@ def print_markdown(result: QueryResult):
 @click.option(
     "--sources",
     multiple=True,
-    help="Sources to check: osv, github, nvd. Naming vulnerablecode selects it instead.",
+    help="Sources to query: osv, github, nvd, vulnerablecode. Repeatable.",
 )
 @click.option(
     "--use-vulnerablecode",
@@ -412,12 +412,12 @@ def main(
     # subprocess caller, then let explicit flags override.
     config = VulnerabilityQuery.load_config()
     if disable_source:
-        config.disabled_sources = list(parse_disabled(",".join(disable_source)))
+        try:
+            config.disabled_sources = list(parse_disabled(",".join(disable_source)))
+        except UnknownSourceError as e:
+            console.print(f"[red]{e}[/red]")
+            sys.exit(2)
 
-    if use_vulnerablecode:
-        # It always meant "query only VulnerableCode". Kept working as an alias
-        # for exactly that, so anyone with a token and a script is unaffected.
-        config.sources = [VulnerabilitySource.VULNERABLECODE]
     if kev_snapshot:
         config.kev_snapshot = kev_snapshot
     if epss_snapshot:
@@ -438,6 +438,12 @@ def main(
             # VulnerableCode is an ordinary source now, so naming it here joins
             # it to the others rather than replacing them.
             config.sources = parsed
+
+    # Applied after --sources on purpose. On the previous release the
+    # VulnerableCode switch won over any selection, and someone with it baked
+    # into a job should not quietly start querying something else.
+    if use_vulnerablecode:
+        config.sources = [VulnerabilitySource.VULNERABLECODE]
 
     # Initialize query engine
     try:

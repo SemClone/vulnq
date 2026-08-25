@@ -32,15 +32,12 @@ class SourceSpec:
         build: Makes the client, given the configuration and verbosity
         in_default_fanout: Whether it is queried when nobody said otherwise
         merge_priority: Lower wins when several sources describe one advisory
-        credential_hint: What to tell someone whose query it refuses, or None
-            if it needs no credential
     """
 
     source: VulnerabilitySource
     build: Callable[[Configuration, bool], BaseClient]
     in_default_fanout: bool
     merge_priority: int
-    credential_hint: Optional[str] = None
 
 
 def _common(config: Configuration, verbose: bool) -> Dict[str, object]:
@@ -76,14 +73,12 @@ REGISTRY: Tuple[SourceSpec, ...] = (
         build=lambda c, v: GitHubClient(api_key=c.github_token, **_common(c, v)),
         in_default_fanout=True,
         merge_priority=2,
-        credential_hint="set GITHUB_TOKEN for a higher rate limit",
     ),
     SourceSpec(
         source=VulnerabilitySource.NVD,
         build=lambda c, v: NVDClient(api_key=c.nvd_api_key, **_common(c, v)),
         in_default_fanout=True,
         merge_priority=1,
-        credential_hint="set NVD_API_KEY for a higher rate limit",
     ),
     SourceSpec(
         source=VulnerabilitySource.VULNERABLECODE,
@@ -109,21 +104,38 @@ MERGE_PRIORITY: Dict[VulnerabilitySource, int] = {
 }
 
 
+class UnknownSourceError(ValueError):
+    """Raised when a disable list names something that is not a source.
+
+    Ignoring it would be worse than failing: whoever wrote the name believes
+    that source is switched off, and it is not. A typo like "gitub" would leave
+    GitHub quietly queried by someone who thinks they turned it off.
+    """
+
+
 def parse_disabled(raw: Optional[str]) -> Tuple[VulnerabilitySource, ...]:
     """Read a comma separated list of sources an operator has switched off.
 
-    Unknown names are ignored rather than rejected: the variable is set by
-    whoever runs vulnq, often in an image or a job definition, and a name that
-    outlives the source it referred to should not break every query.
-
     Args:
-        raw: The value of VULNQ_DISABLED_SOURCES, or None
+        raw: The value of VULNQ_DISABLED_SOURCES or --disable-source, or None
 
     Returns:
         The sources named, in registry order
+
+    Raises:
+        UnknownSourceError: If a name matches no source
     """
     if not raw:
         return ()
 
     named = {piece.strip().lower() for piece in raw.split(",") if piece.strip()}
+    known = {spec.source.value for spec in REGISTRY}
+
+    unknown = sorted(named - known)
+    if unknown:
+        raise UnknownSourceError(
+            f"Unknown source(s) to disable: {', '.join(unknown)}. "
+            f"Valid sources: {', '.join(sorted(known))}."
+        )
+
     return tuple(spec.source for spec in REGISTRY if spec.source.value in named)

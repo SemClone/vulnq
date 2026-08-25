@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field, computed_field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
 
 
 class Severity(str, Enum):
@@ -243,8 +243,30 @@ class QueryResult(BaseModel):
         return kept, len(self.vulnerabilities) - len(kept)
 
 
+def _default_sources() -> Tuple[VulnerabilitySource, ...]:
+    """Return the sources queried when nobody said otherwise.
+
+    Imported here rather than at module scope because the registry imports the
+    clients, which import this module.
+
+    Returns:
+        The default fan-out, straight from the registry
+    """
+    from .sources import DEFAULT_SOURCES
+
+    return DEFAULT_SOURCES
+
+
 class Configuration(BaseModel):
-    """Configuration model for vulnq."""
+    """Configuration model for vulnq.
+
+    Unknown keys are refused rather than ignored. pydantic's default is to drop
+    them, so `Configuration(use_vulnerablecode=True)` against a version that no
+    longer has that field, or a plain typo like `tiemout=30`, would be accepted
+    in silence and the caller would get defaults they did not ask for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     github_token: Optional[str] = Field(None, description="GitHub API token")
     nvd_api_key: Optional[str] = Field(None, description="NVD API key")
@@ -271,10 +293,6 @@ class Configuration(BaseModel):
         ),
     )
     sources: List[VulnerabilitySource] = Field(
-        default_factory=lambda: [
-            VulnerabilitySource.OSV,
-            VulnerabilitySource.GITHUB,
-            VulnerabilitySource.NVD,
-        ],
+        default_factory=lambda: list(_default_sources()),
         description="Enabled vulnerability sources",
     )

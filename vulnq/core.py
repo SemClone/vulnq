@@ -460,6 +460,13 @@ class VulnerabilityQuery:
                 merged.cvss_score = vuln.cvss_score
                 merged.cvss_vector = vuln.cvss_vector
                 merged.severity = vuln.severity
+            elif merged.cvss_score is None:
+                # Neither carries a score, so there is nothing to derive a
+                # rating from and the records simply disagree. Take the higher:
+                # an under-rated finding is one a severity filter removes, and
+                # that is the direction that hurts.
+                if SEVERITY_ORDER[vuln.severity] > SEVERITY_ORDER[merged.severity]:
+                    merged.severity = vuln.severity
 
             # Use earliest published date. NVD publishes timestamps without an
             # offset while OSV and GitHub publish them with one, so comparing
