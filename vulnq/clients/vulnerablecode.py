@@ -25,6 +25,9 @@ from .base import BaseClient, MissingCredentialError, RateLimitError, Unsupporte
 
 DEFAULT_BASE_URL = "https://public.vulnerablecode.io/api"
 
+# Enough for the largest package I could find; tensorflow needs eight.
+MAX_PAGES = 25
+
 # The public instance rejects any other value, whatever the token says, so it
 # is not optional and not a courtesy.
 REQUIRED_USER_AGENT = "VCIO_API_AGENT"
@@ -105,10 +108,29 @@ class VulnerableCodeClient(BaseClient):
         """
         self._begin_query()
 
-        packages = await self._post("/v3/packages/", {"purls": [purl], "details": True})
-        advisories = await self._post("/v3/advisories/", {"purls": [purl]})
+        # The instance matches the PURL it was given, verbatim. A qualifier or
+        # subpath an SBOM routinely carries turns a hit into a miss:
+        # log4j-core@2.14.1?type=jar returns nothing where the bare coordinate
+        # returns twelve advisories, Log4Shell among them. Percent-encoding
+        # matters too: pkg:npm/@babel/traverse finds nothing, %40babel finds
+        # the advisory. So the canonical spelling is sent, and the instance is
+        # asked to disregard the parts that only narrow the match.
+        query = {
+            "purls": [self._canonical(purl)],
+            "details": True,
+            "ignore_qualifiers_subpath": True,
+        }
 
-        return self._parse(packages, advisories, purl)
+        packages = await self._post("/v3/packages/", query)
+        affected = self._affected_records(packages)
+        if not affected:
+            # Nothing to describe, so the second request would spend one of
+            # ten requests a minute to learn nothing.
+            return []
+
+        advisories = await self._collect("/v3/advisories/", {"purls": query["purls"]})
+
+        return self._parse(affected, advisories, purl)
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -121,6 +143,76 @@ class VulnerableCodeClient(BaseClient):
         """
         self._begin_query()
         raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
+
+    @staticmethod
+    def _canonical(purl: str) -> str:
+        """Return the PURL in the spelling the instance stores.
+
+        Args:
+            purl: Package URL as the caller wrote it
+
+        Returns:
+            The canonical form, or the input if it does not parse
+        """
+        try:
+            return str(PackageURL.from_string(purl))
+        except Exception:
+            return purl
+
+    @staticmethod
+    def _affected_records(packages: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Return the advisory records the package response carries.
+
+        Args:
+            packages: Response from /v3/packages/
+
+        Returns:
+            The affected-by entries, across every result
+        """
+        records = []
+        for result in packages.get("results") or []:
+            if not isinstance(result, dict):
+                # Without details the endpoint returns bare PURL strings.
+                continue
+            for affected in result.get("affected_by_vulnerabilities") or []:
+                if isinstance(affected, dict):
+                    records.append(affected)
+        return records
+
+    async def _collect(self, path: str, body: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Read every page of a paginated response.
+
+        The advisory endpoint pages at a hundred, and tensorflow alone has
+        796. Reading only the first page left four findings in five with no
+        severity, no score and no classification, reported as though the
+        advisories simply had none.
+
+        Paged by asking for a page number rather than by following the `next`
+        link the response carries: that link answers 405 to both POST and GET,
+        and points at http rather than https.
+
+        Args:
+            path: Path below the API root
+            body: JSON request body
+
+        Returns:
+            Every result, across all pages
+        """
+        results: List[Dict[str, Any]] = []
+
+        for page in range(1, MAX_PAGES + 1):
+            request = dict(body) if page == 1 else {**body, "page": page}
+            response = await self._post(path, request)
+            results.extend(
+                record for record in response.get("results") or [] if isinstance(record, dict)
+            )
+            if not response.get("next"):
+                return results
+
+        self.parse_warnings.append(
+            f"stopped after {MAX_PAGES} pages of advisories; the rest were not fetched"
+        )
+        return results
 
     async def _post(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
         """Send one request, translating a refusal into something actionable.
@@ -136,18 +228,32 @@ class VulnerableCodeClient(BaseClient):
             MissingCredentialError: If refused and no token is configured
             RateLimitError: If throttled
         """
+        return await self._post_url(f"{self.base_url}{path}", body)
+
+    async def _post_url(self, url: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Send one request to an absolute URL, translating a refusal.
+
+        Args:
+            url: Absolute URL, which is what the pagination cursor gives
+            body: JSON request body
+
+        Returns:
+            The decoded response
+
+        Raises:
+            MissingCredentialError: If refused and no token is configured
+            RateLimitError: If throttled
+        """
         try:
-            return await self._make_request(
-                "POST", f"{self.base_url}{path}", json=body, headers=self._get_headers()
-            )
+            return await self._make_request("POST", url, json=body, headers=self._get_headers())
+        except RateLimitError as e:
+            # The base client already recognises a 429. Renaming it here says
+            # what would lift the limit, which the status alone does not.
+            raise RateLimitError(
+                f"{self.base_url} is throttling this client ({e}). Anonymous access is "
+                "limited to ten requests a minute; set VULNERABLECODE_API_KEY to raise it."
+            ) from e
         except aiohttp.ClientResponseError as e:
-            if e.status == 429:
-                # Anonymous access is ten requests a minute. Saying so is more
-                # use than relaying the status, because a token lifts it.
-                raise RateLimitError(
-                    f"{self.base_url} is throttling this client. Anonymous access is "
-                    "limited; set VULNERABLECODE_API_KEY for a higher rate."
-                ) from e
             if e.status in (401, 403) and not self.api_key:
                 raise MissingCredentialError(
                     f"{self.base_url} refused this request. If the instance requires a "
@@ -156,25 +262,26 @@ class VulnerableCodeClient(BaseClient):
             raise
 
     def _parse(
-        self, packages: Dict[str, Any], advisories: Dict[str, Any], purl: str
+        self, affected: List[Dict[str, Any]], advisories: List[Dict[str, Any]], purl: str
     ) -> List[Vulnerability]:
         """Join the two responses into findings.
 
-        The package response says which advisories apply and which versions fix
-        them; the advisory response carries the severities and weaknesses. They
-        are joined on advisory_id.
-
         Args:
-            packages: Response from /v3/packages/
-            advisories: Response from /v3/advisories/
+            affected: Advisory records from /v3/packages/
+            advisories: Advisory records from /v3/advisories/, all pages
             purl: The PURL that was queried
 
         Returns:
             List of Vulnerability objects
+
+        Raises:
+            RuntimeError: If records were returned and none could be parsed,
+                which means the response shape moved rather than the package
+                being clean
         """
         detail = {
             record["advisory_id"]: record
-            for record in advisories.get("results") or []
+            for record in advisories
             if isinstance(record, dict) and record.get("advisory_id")
         }
 
@@ -182,16 +289,26 @@ class VulnerableCodeClient(BaseClient):
         queried_version = self._queried_version(purl)
 
         findings = []
-        for result in packages.get("results") or []:
-            if not isinstance(result, dict):
-                # Without details=True the endpoint returns bare PURL strings.
-                continue
-            for affected in result.get("affected_by_vulnerabilities") or []:
-                if not isinstance(affected, dict):
-                    continue
-                vuln = self._build(affected, detail, ecosystem, queried_version)
-                if vuln:
-                    findings.append(vuln)
+        for record in affected:
+            vuln = self._build(record, detail, ecosystem, queried_version)
+            if vuln:
+                findings.append(vuln)
+
+        if affected and not findings:
+            # Every record refused to parse. The package is not clean; the
+            # shape moved, as it did when v1 was withdrawn.
+            raise RuntimeError(
+                f"VulnerableCode returned {len(affected)} records but none could be parsed"
+            )
+
+        # A record the advisory endpoint did not detail is still a real
+        # finding, it just has no severity. Say how many, or a consumer reads
+        # UNKNOWN as "nobody rated this".
+        undetailed = sum(1 for record in affected if record.get("advisory_id") not in detail)
+        if undetailed:
+            self.parse_warnings.append(
+                f"{undetailed} of {len(affected)} advisories carry no severity detail"
+            )
 
         return findings
 
@@ -283,6 +400,12 @@ class VulnerableCodeClient(BaseClient):
         """
         rows = [row for row in severities if isinstance(row, dict)]
 
+        # A vector kept in case nothing scores: a 4.0 vector cannot be scored
+        # here, but a consumer can, and reporting it beats reporting nothing.
+        # Held rather than returned, because returning it early would let an
+        # unscoreable 4.0 row hide a perfectly good 3.1 score below it.
+        fallback_vector = None
+
         for system in _CVSS_SYSTEMS:
             for row in rows:
                 if str(row.get("scoring_system", "")).lower() != system:
@@ -295,9 +418,8 @@ class VulnerableCodeClient(BaseClient):
                     score = base_score(vector)
                 if score is not None:
                     return self.cvss_to_severity(score), score, vector
-                if vector:
-                    # A 4.0 vector cannot be scored here, but a consumer can.
-                    return Severity.UNKNOWN, None, vector
+                if vector and fallback_vector is None:
+                    fallback_vector = vector
 
         # No CVSS row parsed, so a textual rating is the only one available.
         for row in rows:
@@ -307,4 +429,4 @@ class VulnerableCodeClient(BaseClient):
                 if rated is not Severity.UNKNOWN:
                     return rated, None, None
 
-        return Severity.UNKNOWN, None, None
+        return Severity.UNKNOWN, None, fallback_vector

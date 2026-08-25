@@ -90,7 +90,10 @@ Queried per lookup, in parallel, then de-duplicated:
   `--sources vulnerablecode`, or alongside them; `--use-vulnerablecode` still
   means "query only VulnerableCode". Anonymous access works and is throttled
   at ten requests a minute. `VULNERABLECODE_API_KEY` raises that limit, and
-  `VULNERABLECODE_URL` points at a self-hosted instance
+  `VULNERABLECODE_URL` points at a self-hosted instance. Its advisory endpoint
+  pages at a hundred, so a package with many hundreds of advisories needs more
+  requests than the anonymous budget allows and will report throttling rather
+  than a partial answer
 
 Joined from published snapshots rather than queried (see
 [Exploitability Enrichment](#exploitability-enrichment)):

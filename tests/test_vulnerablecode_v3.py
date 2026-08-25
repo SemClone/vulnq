@@ -91,7 +91,11 @@ class TestTheRequest:
         gone: /api/packages/ answers 404."""
         client = wired(recorded("lodash"), recorded("lodash-advisories"))
         run(client, "pkg:npm/lodash@4.17.20")
-        assert client.sent[0]["json"] == {"purls": ["pkg:npm/lodash@4.17.20"], "details": True}
+        assert client.sent[0]["json"] == {
+            "purls": ["pkg:npm/lodash@4.17.20"],
+            "details": True,
+            "ignore_qualifiers_subpath": True,
+        }
         assert client.sent[1]["json"] == {"purls": ["pkg:npm/lodash@4.17.20"]}
 
     def test_details_is_requested_or_the_response_is_bare_purls(self):
@@ -211,9 +215,22 @@ class TestRefusals:
         return client
 
     def test_throttling_says_so_and_names_the_remedy(self):
-        """Anonymous access is ten requests a minute; a token lifts it."""
-        with pytest.raises(RateLimitError, match="throttling"):
-            run(self._refusing(429))
+        """Anonymous access is ten requests a minute; a token lifts it.
+
+        The base client turns a 429 into RateLimitError before this client
+        ever sees a ClientResponseError, so the stub raises what the real
+        transport raises. Feeding it a ClientResponseError, as the first
+        version of this test did, exercised a branch production never reaches.
+        """
+        client = VulnerableCodeClient()
+
+        async def _throttle(method, url, **kwargs):
+            raise RateLimitError("Rate limit exceeded. Retry after 42 seconds.")
+
+        client._make_request = _throttle
+
+        with pytest.raises(RateLimitError, match="ten requests a minute"):
+            run(client)
 
     @pytest.mark.parametrize("status", [401, 403])
     def test_a_refusal_without_a_token_names_the_token(self, status):
@@ -301,3 +318,210 @@ class TestScoringSystems:
                 assert severity is not Severity.UNKNOWN
             return
         pytest.fail("the recordings no longer carry a CVSS severity")
+
+
+class TestTheThingsThatWereSilentlyLost:
+    """Each of these returned an answer that looked complete and was not."""
+
+    def test_every_page_of_advisories_is_read(self):
+        """The endpoint pages at a hundred and tensorflow has 796. Reading one
+        page left four findings in five with no severity, no score and no
+        classification, reported as though the advisories had none.
+
+        The stub refuses anything but a page number in the body, which is what
+        the instance does: its own `next` link answers 405 to both POST and
+        GET, and points at http rather than https. Asserting only that a
+        second request happened passed while the client followed that link
+        into a 405.
+        """
+        packages = {
+            "count": 1,
+            "results": [
+                {
+                    "purl": "pkg:npm/x@1",
+                    "affected_by_vulnerabilities": [
+                        {"advisory_id": "A-1", "summary": "one"},
+                        {"advisory_id": "A-2", "summary": "two"},
+                    ],
+                }
+            ],
+        }
+        pages = {
+            1: {
+                "next": "http://public.vulnerablecode.io/api/v3/advisories/?page=2",
+                "results": [
+                    {
+                        "advisory_id": "A-1",
+                        "severities": [{"scoring_system": "cvssv3.1", "value": "9.8"}],
+                    }
+                ],
+            },
+            2: {
+                "next": None,
+                "results": [
+                    {
+                        "advisory_id": "A-2",
+                        "severities": [{"scoring_system": "cvssv3.1", "value": "5.0"}],
+                    }
+                ],
+            },
+        }
+
+        client = VulnerableCodeClient()
+        asked = []
+
+        async def _request(method, url, **kwargs):
+            body = kwargs.get("json") or {}
+            if "/packages/" in url:
+                return packages
+            if "?page=" in url:
+                raise AssertionError("the next link answers 405; page goes in the body")
+            page = body.get("page", 1)
+            asked.append(page)
+            return pages[page]
+
+        client._make_request = _request
+        findings = {f.id: f for f in run(client, "pkg:npm/x@1")}
+
+        assert asked == [1, 2], f"pages requested: {asked}"
+        assert findings["A-1"].cvss_score == 9.8
+        assert findings["A-2"].cvss_score == 5.0, "the finding from page two lost its severity"
+
+    def test_a_qualifier_does_not_turn_a_hit_into_a_miss(self):
+        """log4j-core@2.14.1?type=jar returns nothing from the instance where
+        the bare coordinate returns twelve advisories, Log4Shell among them,
+        and SBOM purls routinely carry that qualifier."""
+        client = wired(recorded("lodash"), recorded("lodash-advisories"))
+        run(client, "pkg:npm/lodash@4.17.20?type=tgz")
+        assert client.sent[0]["json"]["ignore_qualifiers_subpath"] is True
+
+    def test_a_scoped_package_is_sent_percent_encoded(self):
+        """pkg:npm/@babel/traverse finds nothing; %40babel finds the advisory."""
+        client = wired(recorded("lodash"), recorded("lodash-advisories"))
+        run(client, "pkg:npm/@babel/traverse@7.22.0")
+        assert client.sent[0]["json"]["purls"] == ["pkg:npm/%40babel/traverse@7.22.0"]
+
+    def test_an_unparseable_response_is_not_a_clean_scan(self):
+        """If the shape moves again, as it did when v1 was withdrawn, every
+        query would otherwise return nothing and read as no vulnerabilities."""
+        packages = {
+            "results": [
+                {"affected_by_vulnerabilities": [{"no_identifier_here": True}, {"nor_here": True}]}
+            ]
+        }
+        client = wired(packages, {"results": []})
+        with pytest.raises(RuntimeError, match="none could be parsed"):
+            run(client, "pkg:npm/x@1")
+
+    def test_advisories_with_no_severity_detail_are_counted(self):
+        """UNKNOWN otherwise reads as "nobody rated this"."""
+        client = wired(recorded("lodash"), recorded("lodash-advisories"))
+        run(client)
+        assert any("carry no severity detail" in w for w in client.parse_warnings)
+
+    def test_the_second_request_is_skipped_when_the_first_found_nothing(self):
+        """It would spend one of ten requests a minute to learn nothing."""
+        client = wired(recorded("no-such-package"), recorded("no-such-package-advisories"))
+        assert run(client, "pkg:npm/there-is-no-such-package-xyzzy@9.9.9") == []
+        assert len(client.sent) == 1
+
+    def test_an_unscoreable_newer_vector_does_not_hide_an_older_score(self):
+        """The loop runs newest specification first, so returning a 4.0 vector
+        as soon as it is seen skipped the 3.1 row that carries a number."""
+        severity, score, vector = VulnerableCodeClient()._rate(
+            [
+                {"scoring_system": "cvssv4", "scoring_elements": "CVSS:4.0/AV:N/AC:L"},
+                {"scoring_system": "cvssv3.1", "value": "9.8"},
+            ]
+        )
+        assert score == 9.8
+        assert severity is Severity.CRITICAL
+
+    def test_a_vector_alone_is_still_reported_when_nothing_scores(self):
+        severity, score, vector = VulnerableCodeClient()._rate(
+            [
+                {"scoring_system": "cvssv4", "scoring_elements": "CVSS:4.0/AV:N/AC:L"},
+            ]
+        )
+        assert score is None
+        assert vector == "CVSS:4.0/AV:N/AC:L"
+
+
+class TestConfiguration:
+    """The knobs the README promises, which had no code behind them."""
+
+    def test_the_token_and_instance_reach_the_client(self):
+        from vulnq.core import VulnerabilityQuery
+        from vulnq.models import Configuration
+
+        engine = VulnerabilityQuery(
+            config=Configuration(
+                sources=[VulnerabilitySource.VULNERABLECODE],
+                vulnerablecode_api_key="secret-token",
+                vulnerablecode_url="https://vc.internal/api",
+            )
+        )
+        client = engine._clients[VulnerabilitySource.VULNERABLECODE]
+        assert client.api_key == "secret-token"
+        assert client.base_url == "https://vc.internal/api"
+
+    def test_the_environment_supplies_both(self, monkeypatch):
+        from vulnq.core import VulnerabilityQuery
+
+        monkeypatch.setenv("VULNERABLECODE_API_KEY", "from-env")
+        monkeypatch.setenv("VULNERABLECODE_URL", "https://vc.internal/api")
+        config = VulnerabilityQuery.load_config()
+        assert config.vulnerablecode_api_key == "from-env"
+        assert config.vulnerablecode_url == "https://vc.internal/api"
+
+    def test_the_command_line_flags_exist(self):
+        """The client's own error message prescribes --vulnerablecode-api-key."""
+        from click.testing import CliRunner
+
+        from vulnq.cli import main
+
+        output = CliRunner().invoke(main, ["--help"]).output
+        assert "--vulnerablecode-api-key" in output
+        assert "--vulnerablecode-url" in output
+
+    def test_a_self_hosted_instance_is_the_one_queried(self):
+        client = VulnerableCodeClient(base_url="https://vc.internal/api/")
+        sent = []
+
+        async def _request(method, url, **kwargs):
+            sent.append(url)
+            return {"results": []}
+
+        client._make_request = _request
+        run(client, "pkg:npm/x@1")
+        assert sent[0].startswith("https://vc.internal/api/v3/packages/")
+
+
+def test_being_throttled_partway_through_is_not_a_partial_answer():
+    """A package large enough to need several pages can exhaust the anonymous
+    budget of ten requests a minute. If that happens the whole query fails, so
+    the envelope reports a source that could not be checked rather than the
+    pages that happened to arrive before the limit."""
+    packages = {
+        "results": [
+            {
+                "purl": "pkg:pypi/big@1",
+                "affected_by_vulnerabilities": [{"advisory_id": f"A-{n}"} for n in range(3)],
+            }
+        ]
+    }
+    client = VulnerableCodeClient()
+    calls = []
+
+    async def _request(method, url, **kwargs):
+        calls.append(url)
+        if "/packages/" in url:
+            return packages
+        if len([c for c in calls if "/advisories/" in c]) == 1:
+            return {"next": "http://x/?page=2", "results": [{"advisory_id": "A-0"}]}
+        raise RateLimitError("Rate limit exceeded. Retry after 41 seconds.")
+
+    client._make_request = _request
+
+    with pytest.raises(RateLimitError):
+        run(client, "pkg:pypi/big@1")

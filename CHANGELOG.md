@@ -145,7 +145,20 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
 - The client also read a `scores` key at a level the API has never served, so
   even a reachable instance would have returned findings with no severity. Its
   tests passed because they fed it that invented shape. Every payload under
-  `tests/fixtures/vulnerablecode` is now recorded from the live API
+  `tests/fixtures/vulnerablecode` is now recorded from the live API.
+
+  Its advisory endpoint pages at a hundred and a large package has many
+  hundreds, so every page is read; the page number goes in the request body
+  because the `next` link the response carries answers 405 and points at
+  http. A query that runs out of the anonymous ten-a-minute budget partway
+  through reports throttling rather than the pages that arrived first.
+
+  The PURL is sent in its canonical spelling with qualifiers and subpath
+  disregarded. The instance matches verbatim otherwise, so
+  `log4j-core@2.14.1?type=jar`, which is how an SBOM writes it, returned
+  nothing where the bare coordinate returns twelve advisories including
+  Log4Shell, and `pkg:npm/@babel/traverse` returned nothing where the
+  percent-encoded form finds its advisory
 
 ### Changed
 - A source is now declared once, in `vulnq/sources.py`: its client, whether it
