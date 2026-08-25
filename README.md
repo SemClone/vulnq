@@ -276,16 +276,28 @@ snapshot rather than consuming it privately.
 
 vulnq is designed to work seamlessly with other SEMCL.ONE tools:
 
+vulnq reads one identifier per line, from a file, from `--input -`, or from a
+bare pipe. Blank lines are skipped and `#` starts a comment, so a list can be
+annotated.
+
 ```bash
-# Pipe PURLs from src2purl to vulnq
-src2purl /path/to/project | vulnq --format json
+# From a file
+vulnq --input packages.txt --format json
 
-# Check vulnerabilities for detected packages
-upmex /path/to/package.json | vulnq --min-severity critical
-
-# Generate vulnerability report from SBOM
-cat sbom.json | vulnq --input - --format markdown > vulns.md
+# From a pipe, with or without --input -
+printf 'pkg:npm/lodash@4.17.20\npkg:pypi/django@3.2.0\n' | vulnq --format markdown > vulns.md
 ```
+
+Other SEMCL.ONE tools emit richer structures than a list of identifiers, so
+extract the PURLs before piping. With `jq`:
+
+```bash
+jq -r '.. | .purl? // empty' sbom.json | sort -u | vulnq --min-severity high
+```
+
+Note that a direct `src2purl ... | vulnq` pipe does not work today: src2purl
+writes its banner to standard output alongside its results, so the stream is
+not a clean list of identifiers. Tracked in src2purl.
 
 ## Output Formats
 

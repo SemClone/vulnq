@@ -76,7 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could run, and vulnq never read standard input without `--input` at all. Both
   work now: `--input -` and a bare pipe. Blank lines and `#` comments in an
   identifier list are ignored. A terminal with no arguments still gets the
-  usage error rather than waiting silently for input
+  usage error rather than waiting silently for input. A closed descriptor,
+  where Python leaves `sys.stdin` as `None`, is treated as no input rather
+  than raising; input that is not UTF-8 text, such as a piped archive, is
+  named as such rather than dumping a decode traceback; and a byte order mark
+  on the first line of a list written on Windows no longer rides into the
+  first identifier
+- The README's three SEMCL.ONE pipe recipes did not work end to end even once
+  the pipe mechanics were fixed. `src2purl` writes its banner to standard
+  output alongside a rendered table, `upmex` takes a subcommand rather than a
+  bare path, and raw SBOM JSON is not a list of identifiers, so each line was
+  queried as one. They are replaced with recipes that were run before being
+  written down, and the src2purl limitation is stated rather than papered over
 
 ### Removed
 - The README's claim of config file support, and the `pyyaml` and `jsonschema`
