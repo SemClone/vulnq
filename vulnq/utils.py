@@ -30,6 +30,13 @@ def detect_identifier_type(identifier: str) -> IdentifierType:
         return IdentifierType.SHA1
     elif identifier.startswith("md5:"):
         return IdentifierType.MD5
+    elif identifier.startswith("swid:"):
+        # No source here is keyed by SWID, and this branch exists precisely to
+        # say so. Removing it does not remove the identifier from the world: it
+        # sends a real SWID tag down the PURL default instead, where it is
+        # reported as query_type "purl" with an empty errors list. Naming what
+        # cannot be answered is the whole point.
+        return IdentifierType.SWID
 
     # Try to detect by pattern
     # CPE 2.3 format

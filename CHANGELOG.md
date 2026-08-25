@@ -110,8 +110,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error envelope
 - `QueryResult.metadata`, which was never populated and always serialized as
   `{}`, though the README's example showed it filled in
-- `IdentifierType.SWID` and its detection branch. Nothing parsed or queried
-  SWID, so detecting it only ever reached the "no source can answer" error
 - The `is_fixed` parameter of `VulnerableCodeClient._parse_vulnerability`,
   accepted and never read
 - The README's claim of config file support, and the `pyyaml` and `jsonschema`

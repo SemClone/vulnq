@@ -137,8 +137,27 @@ def test_query_result_no_longer_advertises_an_empty_metadata_field():
     assert "metadata" not in result.model_dump(mode="json")
 
 
-def test_swid_is_gone_rather_than_detected_and_unanswerable():
-    """Nothing parsed or queried it, so detecting it only reached an error."""
-    from vulnq.models import IdentifierType
+def test_a_swid_tag_is_named_rather_than_read_as_a_purl():
+    """Detecting SWID looks like dead code and is not.
 
-    assert not hasattr(IdentifierType, "SWID")
+    No source is keyed by SWID, so the branch only ever reaches an error. But
+    deleting it does not delete the identifier from the world: a real SWID tag
+    then falls through to the PURL default and is reported as query_type
+    "purl" with an empty errors list, which says nothing went wrong. Naming
+    what cannot be answered is the point.
+    """
+    import datetime
+
+    from vulnq.models import Configuration, IdentifierType, VulnerabilitySource
+    from vulnq.utils import detect_identifier_type
+
+    assert detect_identifier_type("swid:example.com-myapp-1.0") is IdentifierType.SWID
+
+    from vulnq.core import VulnerabilityQuery
+
+    query = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.NVD]))
+    result = query.query("swid:example.com-myapp-1.0")
+    assert result.query_type is IdentifierType.SWID
+    assert result.errors, "an identifier nobody can answer must say so"
+    assert result.is_conclusive is False
+    assert isinstance(result.query_time, datetime.datetime)

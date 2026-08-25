@@ -26,6 +26,7 @@ class IdentifierType(str, Enum):
     SHA256 = "sha256"
     SHA1 = "sha1"
     MD5 = "md5"
+    SWID = "swid"
 
 
 class VersionMatch(str, Enum):
