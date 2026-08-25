@@ -71,3 +71,74 @@ def test_unparseable_env_var_fails_loudly(monkeypatch):
 def test_env_var_unset_leaves_the_default(monkeypatch):
     monkeypatch.delenv("VULNQ_MAX_CONCURRENT", raising=False)
     assert VulnerabilityQuery.load_config().max_concurrent == 5
+
+
+def test_version_lists_are_ordered_not_hash_ordered():
+    """list(set(...)) made the envelope different on every run.
+
+    Python randomizes string hashing per process, so two scans of one package
+    could not be diffed without phantom changes, and nothing downstream could
+    checksum the output. Asserted at the source, because the ordering is only
+    visible across processes.
+    """
+    import pathlib
+
+    clients = pathlib.Path(__file__).parent.parent / "vulnq" / "clients"
+    offenders = []
+    for path in sorted(clients.glob("*.py")):
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            # Comments may name the pattern while explaining why it is gone.
+            if "list(set(" in line.split("#", 1)[0]:
+                offenders.append(f"{path.name}:{number}")
+    assert offenders == []
+
+
+def test_the_removed_helpers_stay_removed():
+    """Each had no caller. Re-adding one without a caller re-adds the problem."""
+    import vulnq.utils as utils
+    from vulnq.clients.base import BaseClient
+    from vulnq.core import VulnerabilityQuery
+
+    for name in ("normalize_version", "severity_to_score", "score_to_severity"):
+        assert not hasattr(utils, name), name
+    assert not hasattr(BaseClient, "generate_vuln_id")
+    assert not hasattr(VulnerabilityQuery, "query_hash")
+
+
+def test_the_shared_helpers_are_shared():
+    """_queried_version and _parse_timestamp were copied per client.
+
+    The timestamp one lived in six places across three clients, each in a bare
+    try/except, so a fix to one left the others as they were.
+    """
+    import pathlib
+
+    from vulnq.clients.base import BaseClient
+
+    assert hasattr(BaseClient, "_queried_version")
+    assert hasattr(BaseClient, "_parse_timestamp")
+
+    clients = pathlib.Path(__file__).parent.parent / "vulnq" / "clients"
+    for path in sorted(clients.glob("*.py")):
+        if path.name == "base.py":
+            continue
+        assert "fromisoformat" not in path.read_text(), path.name
+
+
+def test_query_result_no_longer_advertises_an_empty_metadata_field():
+    """It was never populated, and the README showed it filled in."""
+    import datetime
+
+    from vulnq.models import IdentifierType, QueryResult
+
+    result = QueryResult(
+        query="q", query_type=IdentifierType.PURL, query_time=datetime.datetime.now()
+    )
+    assert "metadata" not in result.model_dump(mode="json")
+
+
+def test_swid_is_gone_rather_than_detected_and_unanswerable():
+    """Nothing parsed or queried it, so detecting it only reached an error."""
+    from vulnq.models import IdentifierType
+
+    assert not hasattr(IdentifierType, "SWID")

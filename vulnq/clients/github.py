@@ -1,6 +1,5 @@
 """GitHub Advisory Database API client."""
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from packageurl import PackageURL
@@ -414,22 +413,8 @@ class GitHubClient(BaseClient):
                 aliases.append(identifier.get("value"))
 
         # Parse dates
-        published_date = None
-        modified_date = None
-
-        if advisory.get("publishedAt"):
-            try:
-                published_date = datetime.fromisoformat(
-                    advisory["publishedAt"].replace("Z", "+00:00")
-                )
-            except Exception:
-                pass
-
-        if advisory.get("updatedAt"):
-            try:
-                modified_date = datetime.fromisoformat(advisory["updatedAt"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        published_date = self._parse_timestamp(advisory.get("publishedAt"))
+        modified_date = self._parse_timestamp(advisory.get("updatedAt"))
 
         # Parse affected and fixed versions
         affected_versions = []

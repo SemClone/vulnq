@@ -1,10 +1,7 @@
 """OSV.dev API client."""
 
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional
-
-from packageurl import PackageURL
 
 from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
@@ -88,25 +85,6 @@ class OSVClient(BaseClient):
 
         return self._parse_vulns(vulns, self._queried_version(purl))
 
-    @staticmethod
-    def _queried_version(purl: str) -> Optional[str]:
-        """Return the version the PURL pins, if any.
-
-        OSV filters by version server-side, but only when the query carries
-        one. A versionless PURL gets every advisory for the package back, and
-        claiming those were version-matched would be a claim nobody checked.
-
-        Args:
-            purl: Package URL string
-
-        Returns:
-            The pinned version, or None
-        """
-        try:
-            return PackageURL.from_string(purl).version
-        except Exception:
-            return None
-
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
 
@@ -120,20 +98,6 @@ class OSVClient(BaseClient):
         """
         self._begin_query()
         raise UnsupportedQueryError("OSV cannot be queried by CPE; use a PURL")
-
-    def _parse_response(
-        self, response: Dict[str, Any], queried_version: Optional[str] = None
-    ) -> List[Vulnerability]:
-        """Parse a single-page OSV API response.
-
-        Args:
-            response: Raw API response
-            queried_version: Version pinned by the query, if any
-
-        Returns:
-            List of Vulnerability objects
-        """
-        return self._parse_vulns(response.get("vulns") or [], queried_version)
 
     def _parse_vulns(
         self, vulns: List[Dict[str, Any]], queried_version: Optional[str] = None
@@ -253,17 +217,9 @@ class OSVClient(BaseClient):
         published_date = None
         modified_date = None
 
-        if "published" in data:
-            try:
-                published_date = datetime.fromisoformat(data["published"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        published_date = self._parse_timestamp(data.get("published"))
 
-        if "modified" in data:
-            try:
-                modified_date = datetime.fromisoformat(data["modified"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        modified_date = self._parse_timestamp(data.get("modified"))
 
         # Parse affected versions and fixes
         affected_versions = []
@@ -308,8 +264,13 @@ class OSVClient(BaseClient):
             cvss_vector=cvss_vector,
             summary=summary,
             details=details,
-            affected_versions=list(set(affected_versions)),
-            fixed_versions=list(set(fixed_versions)),
+            # sorted, not list(set(...)): Python randomizes string hashing
+            # per process, so the same advisory came back in a different order
+            # on every run. Two scans of one package could not be diffed
+            # without phantom changes, and nothing downstream could checksum
+            # the envelope.
+            affected_versions=sorted(set(affected_versions)),
+            fixed_versions=sorted(set(fixed_versions)),
             published_date=published_date,
             modified_date=modified_date,
             references=references,

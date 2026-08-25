@@ -92,7 +92,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queried as one. They are replaced with recipes that were run before being
   written down, and the src2purl limitation is stated rather than papered over
 
+### Fixed
+- Version lists came out in a different order on every run. `affected_versions`
+  and `fixed_versions` were deduplicated with `list(set(...))` in five places,
+  and Python randomizes string hashing per process, so two scans of the same
+  package could not be diffed without phantom changes and nothing downstream
+  could checksum the envelope. They are sorted now
+- `_queried_version` was copied between two clients and the timestamp parser
+  between six places across three, each in a bare `try/except`, so a fix to one
+  left the others as they were. Both now live on `BaseClient`
+
 ### Removed
+- Code nothing called: `utils.normalize_version`, `utils.severity_to_score`,
+  `utils.score_to_severity` which duplicated `BaseClient.cvss_to_severity`,
+  `BaseClient.generate_vuln_id`, `OSVClient._parse_response`, and
+  `VulnerabilityQuery.query_hash`, which had no callers and always returned an
+  error envelope
+- `QueryResult.metadata`, which was never populated and always serialized as
+  `{}`, though the README's example showed it filled in
+- `IdentifierType.SWID` and its detection branch. Nothing parsed or queried
+  SWID, so detecting it only ever reached the "no source can answer" error
+- The `is_fixed` parameter of `VulnerableCodeClient._parse_vulnerability`,
+  accepted and never read
 - The README's claim of config file support, and the `pyyaml` and `jsonschema`
   dependencies that only existed to back it. There was no `--config`, no
   `VULNQ_CONFIG`, no parser and no path anything looked in, so tokens or limits

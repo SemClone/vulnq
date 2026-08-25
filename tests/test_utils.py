@@ -5,8 +5,6 @@ from vulnq.utils import (
     detect_identifier_type,
     parse_purl,
     parse_cpe,
-    normalize_version,
-    score_to_severity
 )
 from vulnq.models import IdentifierType
 
@@ -21,7 +19,10 @@ class TestDetectIdentifierType:
 
     def test_detect_cpe(self):
         """Test CPE detection."""
-        assert detect_identifier_type("cpe:2.3:a:nodejs:node.js:14.17.0:*:*:*:*:*:*:*") == IdentifierType.CPE
+        assert (
+            detect_identifier_type("cpe:2.3:a:nodejs:node.js:14.17.0:*:*:*:*:*:*:*")
+            == IdentifierType.CPE
+        )
         assert detect_identifier_type("cpe:/a:apache:tomcat:9.0.0") == IdentifierType.CPE
 
     def test_detect_hashes(self):
@@ -85,41 +86,3 @@ class TestParseCpe:
         """Test parsing invalid CPE."""
         info = parse_cpe("not-a-cpe")
         assert info is None
-
-
-class TestNormalizeVersion:
-    """Test version normalization."""
-
-    def test_remove_v_prefix(self):
-        """Test removing 'v' prefix."""
-        assert normalize_version("v1.2.3") == "1.2.3"
-        assert normalize_version("V1.2.3") == "1.2.3"
-        assert normalize_version("1.2.3") == "1.2.3"
-
-
-class TestScoreToSeverity:
-    """Test CVSS score to severity conversion."""
-
-    def test_critical(self):
-        """Test critical severity."""
-        assert score_to_severity(9.0) == "CRITICAL"
-        assert score_to_severity(10.0) == "CRITICAL"
-
-    def test_high(self):
-        """Test high severity."""
-        assert score_to_severity(7.0) == "HIGH"
-        assert score_to_severity(8.9) == "HIGH"
-
-    def test_medium(self):
-        """Test medium severity."""
-        assert score_to_severity(4.0) == "MEDIUM"
-        assert score_to_severity(6.9) == "MEDIUM"
-
-    def test_low(self):
-        """Test low severity."""
-        assert score_to_severity(0.1) == "LOW"
-        assert score_to_severity(3.9) == "LOW"
-
-    def test_none(self):
-        """Test none severity."""
-        assert score_to_severity(0.0) == "NONE"
