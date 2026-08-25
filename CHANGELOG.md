@@ -69,6 +69,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every record inside credited a database that was never queried. It also left
   the VulnerableCode entry in the merge priority table unreachable
 
+### Fixed
+- Piping into vulnq did not work, and the README documented three ways to do
+  it. `--input` was declared `click.Path(exists=True)` without `allow_dash`, so
+  click rejected `-` as a nonexistent path before the branch that handles it
+  could run, and vulnq never read standard input without `--input` at all. Both
+  work now: `--input -` and a bare pipe. Blank lines and `#` comments in an
+  identifier list are ignored. A terminal with no arguments still gets the
+  usage error rather than waiting silently for input. A closed descriptor,
+  where Python leaves `sys.stdin` as `None`, is treated as no input rather
+  than raising; input that is not UTF-8 text, such as a piped archive, is
+  named as such rather than dumping a decode traceback, on any platform:
+  whether an undecodable byte raises depends on the locale, and under
+  surrogateescape it would otherwise have been queried as an identifier; and
+  a byte order mark
+  on the first line of a list written on Windows no longer rides into the
+  first identifier
+- The README's three SEMCL.ONE pipe recipes did not work end to end even once
+  the pipe mechanics were fixed. `src2purl` writes its banner to standard
+  output alongside a rendered table, `upmex` takes a subcommand rather than a
+  bare path, and raw SBOM JSON is not a list of identifiers, so each line was
+  queried as one. They are replaced with recipes that were run before being
+  written down, and the src2purl limitation is stated rather than papered over
+
+### Removed
+- The README's claim of config file support, and the `pyyaml` and `jsonschema`
+  dependencies that only existed to back it. There was no `--config`, no
+  `VULNQ_CONFIG`, no parser and no path anything looked in, so tokens or limits
+  put in the advertised file were silently ignored. vulnq is configured through
+  environment variables and flags
+
 ### Changed
 - `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
   list, so a caller can report what a filter removed instead of presenting a

@@ -1,7 +1,7 @@
 """Command-line interface for vulnq."""
 
 import sys
-from typing import Optional
+from typing import Iterable, List, Optional
 
 import click
 from rich.console import Console
@@ -13,6 +13,59 @@ from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity, VersionMatch
 
 console = Console()
+
+
+def _stdin_is_piped() -> bool:
+    """Return whether standard input carries data meant for us.
+
+    A closed descriptor, as in `vulnq <&-`, leaves sys.stdin as None rather
+    than a stream, so asking it anything raises. Under pythonw and some
+    service managers it is None as well.
+
+    Returns:
+        True if standard input is readable and is not a terminal
+    """
+    stream = sys.stdin
+    if stream is None:
+        return False
+    try:
+        return not stream.isatty()
+    except (AttributeError, ValueError):
+        # ValueError for a stream closed underneath us.
+        return False
+
+
+def _read_identifiers(stream: Optional[Iterable[str]]) -> List[str]:
+    """Read one identifier per line, ignoring blanks and comments.
+
+    Args:
+        stream: Any iterable of lines, a file or standard input. None when the
+            descriptor was closed, which reads as no identifiers rather than
+            raising
+
+    Returns:
+        The identifiers, in the order given
+    """
+    if stream is None:
+        return []
+
+    identifiers = []
+    for line in stream:
+        # Whether an undecodable byte raises depends on the platform: under a
+        # UTF-8 locale the decoder raises, but with surrogateescape in effect,
+        # which is the default in a C locale, it survives as a lone surrogate
+        # and would be queried as though it were an identifier. Catching only
+        # the exception left that second case unguarded.
+        if any("\ud800" <= character <= "\udfff" for character in line):
+            raise UnicodeDecodeError("utf-8", b"", 0, 1, "input is not UTF-8 text")
+
+        # A list written on Windows carries a byte order mark on its first
+        # line, which would otherwise ride along into the identifier and fail
+        # type detection for that one entry only.
+        line = line.lstrip("\ufeff").strip()
+        if line and not line.startswith("#"):
+            identifiers.append(line)
+    return identifiers
 
 
 def print_table(result: QueryResult, show_fixes: bool = False):
@@ -223,7 +276,14 @@ def print_markdown(result: QueryResult):
 @click.option("--sha256", help="Query using SHA256 hash")
 @click.option("--sha1", help="Query using SHA1 hash")
 @click.option("--md5", help="Query using MD5 hash")
-@click.option("--input", "-i", type=click.Path(exists=True), help="Input file with identifiers")
+@click.option(
+    "--input",
+    "-i",
+    # allow_dash, or click rejects "-" as a nonexistent path before the branch
+    # that handles it can run, and the documented pipe recipes all fail.
+    type=click.Path(exists=True, allow_dash=True),
+    help="Input file with identifiers, or - for standard input",
+)
 @click.option(
     "--format",
     "-f",
@@ -307,12 +367,30 @@ def main(
     elif md5:
         queries.append(f"md5:{md5}")
     elif input:
-        if input == "-":
-            queries.extend(line.strip() for line in sys.stdin if line.strip())
-        else:
-            with open(input) as f:
-                queries.extend(line.strip() for line in f if line.strip())
-    else:
+        try:
+            if input == "-":
+                queries.extend(_read_identifiers(sys.stdin))
+            else:
+                with open(input) as f:
+                    queries.extend(_read_identifiers(f))
+        except UnicodeDecodeError:
+            # Piping an archive or an image is an easy mistake, and a decode
+            # traceback does not say which mistake was made.
+            console.print("[red]Error: input is not UTF-8 text[/red]")
+            console.print("vulnq reads one identifier per line")
+            sys.exit(1)
+    elif _stdin_is_piped():
+        # Being piped to without --input is how anyone would expect a tool
+        # like this to compose. A terminal still gets the usage error rather
+        # than a silent wait for input.
+        try:
+            queries.extend(_read_identifiers(sys.stdin))
+        except UnicodeDecodeError:
+            console.print("[red]Error: input is not UTF-8 text[/red]")
+            console.print("vulnq reads one identifier per line")
+            sys.exit(1)
+
+    if not queries:
         console.print("[red]Error: No identifier provided[/red]")
         console.print("Run 'vulnq --help' for usage information")
         sys.exit(1)
