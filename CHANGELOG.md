@@ -79,7 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   usage error rather than waiting silently for input. A closed descriptor,
   where Python leaves `sys.stdin` as `None`, is treated as no input rather
   than raising; input that is not UTF-8 text, such as a piped archive, is
-  named as such rather than dumping a decode traceback; and a byte order mark
+  named as such rather than dumping a decode traceback, on any platform:
+  whether an undecodable byte raises depends on the locale, and under
+  surrogateescape it would otherwise have been queried as an identifier; and
+  a byte order mark
   on the first line of a list written on Windows no longer rides into the
   first identifier
 - The README's three SEMCL.ONE pipe recipes did not work end to end even once

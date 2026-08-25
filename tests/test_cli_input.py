@@ -163,6 +163,8 @@ def test_input_that_is_not_utf8_is_named_rather_than_dumped():
     )
     assert b"Traceback" not in proc.stderr
     assert b"not UTF-8 text" in proc.stdout
+    # The bytes must never reach a source as though they were an identifier.
+    assert b"api.osv.dev" not in proc.stdout
     assert proc.returncode == 1
 
 
@@ -171,4 +173,26 @@ def test_a_byte_order_mark_does_not_ride_into_the_first_identifier():
     assert _read_identifiers(io.StringIO("﻿pkg:npm/a@1\npkg:npm/b@2\n")) == [
         "pkg:npm/a@1",
         "pkg:npm/b@2",
+    ]
+
+
+def test_undecodable_bytes_are_rejected_however_the_platform_decodes_them():
+    """Whether an undecodable byte raises depends on the locale.
+
+    Under a UTF-8 locale the decoder raises. With surrogateescape in effect,
+    which is the default in a C locale and is what CI runs, the byte survives
+    as a lone surrogate and would be queried as though it were an identifier.
+    Catching only the exception left that second case unguarded, and the
+    difference is invisible on a developer machine.
+    """
+    surrogates = b"\xff\xfe\x00\x01binary".decode("utf-8", "surrogateescape")
+    with pytest.raises(UnicodeDecodeError):
+        _read_identifiers(io.StringIO(surrogates + "\n"))
+
+
+def test_ordinary_text_is_not_mistaken_for_undecodable_bytes():
+    """Non-ASCII is perfectly valid; only lone surrogates are the problem."""
+    assert _read_identifiers(io.StringIO("pkg:npm/café@1\npkg:npm/日本@2\n")) == [
+        "pkg:npm/café@1",
+        "pkg:npm/日本@2",
     ]

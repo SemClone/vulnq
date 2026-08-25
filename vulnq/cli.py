@@ -51,6 +51,14 @@ def _read_identifiers(stream: Optional[Iterable[str]]) -> List[str]:
 
     identifiers = []
     for line in stream:
+        # Whether an undecodable byte raises depends on the platform: under a
+        # UTF-8 locale the decoder raises, but with surrogateescape in effect,
+        # which is the default in a C locale, it survives as a lone surrogate
+        # and would be queried as though it were an identifier. Catching only
+        # the exception left that second case unguarded.
+        if any("\ud800" <= character <= "\udfff" for character in line):
+            raise UnicodeDecodeError("utf-8", b"", 0, 1, "input is not UTF-8 text")
+
         # A list written on Windows carries a byte order mark on its first
         # line, which would otherwise ride along into the identifier and fail
         # type detection for that one entry only.
