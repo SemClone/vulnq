@@ -103,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left the others as they were. Both now live on `BaseClient`
 
 ### Removed
+These are breaking changes to the importable surface, so the next release is a
+major one. Each had no caller inside vulnq, but a library consumer importing
+from `vulnq.utils` or reading `QueryResult.metadata` will need to change. Note
+that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
+
 - Code nothing called: `utils.normalize_version`, `utils.severity_to_score`,
   `utils.score_to_severity` which duplicated `BaseClient.cvss_to_severity`,
   `BaseClient.generate_vuln_id`, `OSVClient._parse_response`, and

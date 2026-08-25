@@ -161,3 +161,95 @@ def test_a_swid_tag_is_named_rather_than_read_as_a_purl():
     assert result.errors, "an identifier nobody can answer must say so"
     assert result.is_conclusive is False
     assert isinstance(result.query_time, datetime.datetime)
+
+
+def test_the_shared_timestamp_parser_actually_parses():
+    """A grep for fromisoformat says the copies are gone, not that the one
+    that replaced them works. Making it always return None survived the whole
+    suite, which means six clients' dates were pinned by nothing."""
+    import datetime
+
+    from vulnq.clients.base import BaseClient
+
+    parsed = BaseClient._parse_timestamp("2021-10-22T00:00:00Z")
+    assert parsed == datetime.datetime(2021, 10, 22, tzinfo=datetime.timezone.utc)
+
+    # An offset already present is left as it is.
+    assert BaseClient._parse_timestamp("2021-10-22T00:00:00+02:00").utcoffset() == (
+        datetime.timedelta(hours=2)
+    )
+    # Naive stays naive; inventing a zone would be a claim.
+    assert BaseClient._parse_timestamp("2021-10-22T00:00:00").tzinfo is None
+
+
+@pytest.mark.parametrize(
+    "value", [None, 1234567890, True, b"2021-10-22", [], {}, "", "not a date", "Z"]
+)
+def test_the_shared_timestamp_parser_refuses_what_it_cannot_read(value):
+    """The six copies each caught bare Exception, so a non-string was swallowed."""
+    from vulnq.clients.base import BaseClient
+
+    assert BaseClient._parse_timestamp(value) is None
+
+
+def test_every_client_still_reports_the_dates_it_reads():
+    """The end of the deduplication: the clients must still produce timestamps."""
+    import datetime
+
+    from vulnq.clients.github import GitHubClient
+    from vulnq.clients.nvd import NVDClient
+    from vulnq.clients.osv import OSVClient
+
+    expected = datetime.datetime(2021, 10, 22, tzinfo=datetime.timezone.utc)
+
+    osv = OSVClient()._parse_vulnerability(
+        {"id": "T", "summary": "x", "published": "2021-10-22T00:00:00Z"}
+    )
+    assert osv.published_date == expected
+
+    nvd = NVDClient()._parse_vulnerability(
+        {"id": "CVE-1", "descriptions": [], "published": "2021-10-22T00:00:00Z"}
+    )
+    assert nvd.published_date == expected
+
+    github = GitHubClient()._parse_vulnerability(
+        {
+            "advisory": {
+                "ghsaId": "G",
+                "summary": "x",
+                "severity": "HIGH",
+                "publishedAt": "2021-10-22T00:00:00Z",
+                "identifiers": [],
+                "references": [],
+            }
+        },
+        None,
+    )
+    assert github.published_date == expected
+
+
+def test_version_lists_come_out_in_order_not_merely_deterministically():
+    """The grep above proves list(set(...)) is gone, not that the replacement
+    sorts. A reverse=True mutant survived the whole suite."""
+    from vulnq.clients.osv import OSVClient
+
+    vuln = OSVClient()._parse_vulnerability(
+        {
+            "id": "T",
+            "summary": "x",
+            "affected": [
+                {
+                    "ranges": [
+                        {
+                            "type": "ECOSYSTEM",
+                            "events": [{"introduced": "3.0"}, {"fixed": "1.0"}],
+                        }
+                    ],
+                    "versions": ["2.0", "1.0", "3.0", "1.0"],
+                }
+            ],
+        }
+    )
+    assert vuln.affected_versions == sorted(vuln.affected_versions)
+    assert len(vuln.affected_versions) == len(set(vuln.affected_versions))
+    assert vuln.fixed_versions == sorted(vuln.fixed_versions)
