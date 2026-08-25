@@ -214,7 +214,6 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   nothing changes unless it is set, and a value below one is refused at
   construction rather than deadlocking on `Semaphore(0)`
 
-## [Unreleased]
 
 ### Fixed
 - `cwe_ids` was declared on every finding and always empty. The OSV and
@@ -232,7 +231,11 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   line. They are now ordered by the ecosystem's own rules, reusing the
   comparisons already used for range evaluation. Range expressions, which
   cannot be ordered against a single version, are kept and grouped after them
-  rather than interleaved by accident. Output stays reproducible
+  rather than interleaved by accident, as are wildcards like `nightly-0.28.x`
+  that name a family rather than a release. Where the ecosystem's own
+  comparison declines a pair, as it does for Debian revision suffixes and
+  Maven calendar versions, those two keep a deterministic order rather than
+  being ranked. Output stays reproducible
 
 ## [1.4.0] - 2026-08-17
 

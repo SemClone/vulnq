@@ -124,3 +124,75 @@ def test_the_client_derives_the_ecosystem_from_the_purl():
     assert BaseClient._ecosystem_of("pkg:npm/lodash@4.17.21") == "npm"
     assert BaseClient._ecosystem_of("not a purl") is None
     assert BaseClient._ecosystem_of(None) is None
+
+
+def test_an_undecidable_pair_does_not_disturb_the_versions_around_it():
+    """compare_versions refuses some pairs: a Maven calendar version like
+    2024.Q1.2 against 2024.Q1.12, or a build qualifier against its release.
+
+    Such a pair is treated as equal, so the lexicographic pre-sort breaks the
+    tie and the result stays deterministic. Moving them to the end instead was
+    tried and is worse: a version is unrankable because of one awkward
+    neighbour, so 1.0.0 beside 1.0.0+build would go behind 2.0.0 and the
+    earliest fix would no longer be first.
+    """
+    assert sort_versions("maven", ["1.0.0+build", "1.0.0", "2.0.0"]) == [
+        "1.0.0",
+        "1.0.0+build",
+        "2.0.0",
+    ]
+    assert sort_versions("maven", ["11.0.6", "11.0.6+security-01", "20.0.0"]) == [
+        "11.0.6",
+        "11.0.6+security-01",
+        "20.0.0",
+    ]
+
+
+def test_the_first_entry_is_the_earliest_fix_beside_an_undecidable_pair():
+    """The property the CLI's "Fixed In" column depends on."""
+    ordered = sort_versions("maven", ["10.0.0", "2.2.28", "1.0.0+build", "1.0.0"])
+    assert ordered[0] == "1.0.0"
+    assert ordered[-1] == "10.0.0"
+
+
+def test_an_all_decidable_list_is_ordered_throughout():
+    assert sort_versions("pypi", ["10.0.0", "2.2.9", "1.11.29"]) == [
+        "1.11.29",
+        "2.2.9",
+        "10.0.0",
+    ]
+
+
+@pytest.mark.parametrize("wildcard", ["1.0.x", "1.0.X", "1.0.*", "nightly-0.28.x"])
+def test_a_wildcard_names_a_family_not_a_version(wildcard):
+    """OSV publishes these: OSV-2024-340 lists `nightly-0.28.x`.
+
+    A wildcard cannot be ordered against a concrete release any more than
+    ">=0.28, <0.29" can, so it is grouped with the ranges rather than
+    interleaved as though it were a version somebody could install.
+
+    The concrete versions below both sort after the wildcard alphabetically,
+    so treating it as a version would put it first, where the CLI reads the
+    first entry as the earliest fix.
+    """
+    ordered = sort_versions("npm", [wildcard, "2.0.0", "3.0.0"])
+    assert ordered[:2] == ["2.0.0", "3.0.0"], f"{wildcard} was ranked as a version"
+    assert ordered[2] == wildcard
+
+
+def test_an_x_inside_a_version_is_not_a_wildcard():
+    """Only a trailing wildcard component counts, or real versions are lost."""
+    assert sort_versions("npm", ["1.0.0-alpha.x1", "1.0.0"]) == [
+        "1.0.0-alpha.x1",
+        "1.0.0",
+    ]
+
+
+def test_debian_revisions_keep_a_deterministic_order_without_claiming_one():
+    """The ecosystem comparison declines Debian revision suffixes, so those
+    two are not ranked against each other. The earliest release still comes
+    first, which is the property the output depends on."""
+    ordered = sort_versions("deb", ["2.36-9+deb12u10", "2.36-9+deb12u2", "2.36-9"])
+    assert ordered[0] == "2.36-9"
+    assert set(ordered[1:]) == {"2.36-9+deb12u10", "2.36-9+deb12u2"}
+    assert sort_versions("deb", list(reversed(ordered))) == ordered

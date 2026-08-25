@@ -493,6 +493,11 @@ def evaluate_range(ecosystem: Optional[str], version: str, vulnerable_range: str
 # not, and only a plain version can be ordered against another.
 _RANGE_MARKERS = ("<", ">", "=", ",", " ", "*")
 
+# A trailing wildcard component names a family rather than a version:
+# "nightly-0.28.x" appears in OSV data and cannot be ordered against a
+# concrete release any more than ">=0.28, <0.29" can.
+_WILDCARD_COMPONENT = re.compile(r"(^|[.\-])[xX*]$")
+
 
 def _is_plain_version(value: str) -> bool:
     """Return whether a value is a single version rather than a range.
@@ -503,7 +508,10 @@ def _is_plain_version(value: str) -> bool:
     Returns:
         True if it names one version
     """
-    return bool(value) and not any(marker in value for marker in _RANGE_MARKERS)
+    if not value or any(marker in value for marker in _RANGE_MARKERS):
+        return False
+
+    return not _WILDCARD_COMPONENT.search(value)
 
 
 def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
@@ -515,7 +523,10 @@ def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
     entry of a fixed-versions list is the earliest fix rather than whichever
     string sorted first: lexicographically 10.0.0 precedes 2.2.28.
 
-    Never raises, and never drops a value it cannot order.
+    Never raises, and never drops a value it cannot order. Where the
+    ecosystem's own comparison declines a pair, as it does for Debian revision
+    suffixes and Maven calendar versions, those two keep the deterministic
+    order they arrived in rather than being ranked.
 
     Args:
         ecosystem: PURL type, e.g. "npm" or "maven". None uses semver rules.
@@ -530,9 +541,17 @@ def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
     ranges = [value for value in unique if not _is_plain_version(value)]
 
     def compare(left: str, right: str) -> int:
-        # None means the pair cannot be ordered confidently. Treated as equal,
-        # which leaves the lexicographic pre-sort to break the tie, so the
-        # result is deterministic either way.
+        # compare_versions returns None for a pair it will not rank: a Maven
+        # calendar version like 2024.Q1.2 against 2024.Q1.12, or a build
+        # qualifier like 11.0.6+security-01 against 11.0.6. Treated as equal
+        # here, which leaves the lexicographic pre-sort to break the tie, so
+        # the result is deterministic.
+        #
+        # Exiling those to the end instead was tried and is worse: a version
+        # is unrankable because of one awkward neighbour, so 1.0.0 alongside
+        # 1.0.0+build would be sent behind 2.0.0 and the earliest fix would
+        # no longer be first. A local misordering inside a cluster the tool
+        # already calls undecidable is the smaller error.
         return compare_versions(ecosystem, left, right) or 0
 
     plain.sort(key=cmp_to_key(compare))
