@@ -1,12 +1,13 @@
 """Base client for vulnerability database APIs."""
 
 import asyncio
-import hashlib
 import time
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+from packageurl import PackageURL
 
 from ..models import Severity, Vulnerability, VulnerabilitySource
 
@@ -96,6 +97,48 @@ class BaseClient(ABC):
             self._semaphore_loop = loop
 
         return self._semaphore
+
+    @staticmethod
+    def _queried_version(purl: str) -> Optional[str]:
+        """Return the version the PURL pins, if any.
+
+        Sources that filter by version do so only when the query carries one.
+        A versionless PURL gets every advisory for the package back, and
+        claiming those were version-matched would be a claim nobody checked.
+
+        Args:
+            purl: Package URL string
+
+        Returns:
+            The pinned version, or None
+        """
+        try:
+            return PackageURL.from_string(purl).version
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_timestamp(value: Any) -> Optional[datetime]:
+        """Parse a source timestamp, or return nothing.
+
+        Every source writes UTC as a trailing Z, which fromisoformat did not
+        accept before Python 3.11. This was copied into six places across three
+        clients, each in a bare try/except, so a fix to one left the rest as
+        they were. That is how the naive-versus-aware crash arrived the first
+        time: one client returning a shape the others did not.
+
+        Args:
+            value: Whatever the source put in its date field
+
+        Returns:
+            The timestamp, or None if it is absent or unparseable
+        """
+        if not isinstance(value, str):
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     def _begin_query(self) -> None:
         """Clear per-query state before a new lookup.
@@ -313,22 +356,3 @@ class BaseClient(ABC):
             return Severity.LOW
         else:
             return Severity.NONE
-
-    def generate_vuln_id(self, vuln_data: Dict[str, Any]) -> str:
-        """Generate a consistent ID for deduplication.
-
-        Args:
-            vuln_data: Vulnerability data dictionary
-
-        Returns:
-            Hashed identifier string
-        """
-        # Create a consistent hash from key fields
-        key_parts = [
-            str(vuln_data.get("id", "")),
-            str(vuln_data.get("cve", "")),
-            str(vuln_data.get("summary", "")),
-            str(self.source.value),
-        ]
-        key_string = "|".join(key_parts)
-        return hashlib.sha256(key_string.encode()).hexdigest()[:16]

@@ -326,10 +326,11 @@ not a clean list of identifiers. Tracked in src2purl.
       "references": [...]
     }
   ],
-  "metadata": {
-    "sources": ["osv", "github", "nvd"],
-    "query_time": "2024-11-04T10:30:00Z"
-  }
+  "sources_checked": ["osv", "github", "nvd"],
+  "sources_skipped": {},
+  "warnings": [],
+  "errors": [],
+  "is_conclusive": true
 }
 ```
 
@@ -345,7 +346,7 @@ pytest
 pytest --cov=vulnq tests/
 
 # Run specific test
-pytest tests/test_osv_client.py -v
+pytest tests/test_cvss.py -v
 ```
 
 ### Building

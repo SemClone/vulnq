@@ -3,8 +3,6 @@
 import urllib.parse
 from typing import Any, Dict, List, Optional
 
-from packageurl import PackageURL
-
 from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from .base import BaseClient, UnsupportedQueryError
@@ -96,7 +94,7 @@ class VulnerableCodeClient(BaseClient):
         for vuln_data in affecting:
             try:
                 vuln = self._parse_vulnerability(
-                    vuln_data, is_fixed=False, queried_version=self._queried_version(purl)
+                    vuln_data, queried_version=self._queried_version(purl)
                 )
                 if vuln:
                     vulnerabilities.append(vuln)
@@ -137,33 +135,13 @@ class VulnerableCodeClient(BaseClient):
 
         return vulnerabilities
 
-    @staticmethod
-    def _queried_version(purl: str) -> Optional[str]:
-        """Return the version the PURL pins, if any.
-
-        VulnerableCode filters by version server-side, but only when the query
-        carries one. A versionless PURL gets every advisory for the package
-        back, and calling those version-matched would claim a check nobody ran.
-
-        Args:
-            purl: Package URL string
-
-        Returns:
-            The pinned version, or None
-        """
-        try:
-            return PackageURL.from_string(purl).version
-        except Exception:
-            return None
-
     def _parse_vulnerability(
-        self, data: Dict[str, Any], is_fixed: bool = False, queried_version: Optional[str] = None
+        self, data: Dict[str, Any], queried_version: Optional[str] = None
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
-            is_fixed: Whether this is from fixing_vulnerabilities
             queried_version: Version pinned by the query, if any
 
         Returns:
@@ -252,8 +230,8 @@ class VulnerableCodeClient(BaseClient):
             cvss_vector=None,  # VulnerableCode doesn't provide vector strings
             summary=summary,
             details=data.get("description", ""),
-            affected_versions=list(set(affected_versions)),
-            fixed_versions=list(set(fixed_versions)),
+            affected_versions=sorted(set(affected_versions)),
+            fixed_versions=sorted(set(fixed_versions)),
             published_date=None,  # VulnerableCode doesn't provide dates in this endpoint
             modified_date=None,
             references=references,

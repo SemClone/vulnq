@@ -595,18 +595,6 @@ class VulnerabilityQuery:
             cpe = f"cpe:{cpe}"
         return self.query(cpe)
 
-    def query_hash(self, hash_type: str, hash_value: str) -> QueryResult:
-        """Query using a file hash.
-
-        Args:
-            hash_type: Type of hash (sha256, sha1, md5)
-            hash_value: Hash value
-
-        Returns:
-            QueryResult with vulnerability information
-        """
-        return self.query(f"{hash_type}:{hash_value}")
-
     async def __aenter__(self):
         """Async context manager entry."""
         for client in self._clients.values():

@@ -31,6 +31,11 @@ def detect_identifier_type(identifier: str) -> IdentifierType:
     elif identifier.startswith("md5:"):
         return IdentifierType.MD5
     elif identifier.startswith("swid:"):
+        # No source here is keyed by SWID, and this branch exists precisely to
+        # say so. Removing it does not remove the identifier from the world: it
+        # sends a real SWID tag down the PURL default instead, where it is
+        # reported as query_type "purl" with an empty errors list. Naming what
+        # cannot be answered is the whole point.
         return IdentifierType.SWID
 
     # Try to detect by pattern
@@ -213,52 +218,3 @@ def parse_cpe(cpe_string: str) -> Optional[PackageInfo]:
         pass
 
     return None
-
-
-def normalize_version(version: str) -> str:
-    """Normalize version string for comparison.
-
-    Args:
-        version: Version string
-
-    Returns:
-        Normalized version string
-    """
-    # Remove common prefixes
-    version = re.sub(r"^v", "", version, flags=re.IGNORECASE)
-    return version.strip()
-
-
-def severity_to_score(severity: str) -> float:
-    """Convert severity string to numeric score.
-
-    Args:
-        severity: Severity string
-
-    Returns:
-        Numeric score (0-10)
-    """
-    severity = severity.upper()
-    mapping = {"CRITICAL": 9.0, "HIGH": 7.0, "MEDIUM": 4.0, "LOW": 2.0, "NONE": 0.0, "UNKNOWN": 5.0}
-    return mapping.get(severity, 5.0)
-
-
-def score_to_severity(score: float) -> str:
-    """Convert numeric score to severity string.
-
-    Args:
-        score: CVSS score (0-10)
-
-    Returns:
-        Severity string
-    """
-    if score >= 9.0:
-        return "CRITICAL"
-    elif score >= 7.0:
-        return "HIGH"
-    elif score >= 4.0:
-        return "MEDIUM"
-    elif score >= 0.1:
-        return "LOW"
-    else:
-        return "NONE"

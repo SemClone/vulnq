@@ -1,7 +1,6 @@
 """NIST NVD API client."""
 
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..cvss import coerce_score
@@ -270,17 +269,9 @@ class NVDClient(BaseClient):
         published_date = None
         modified_date = None
 
-        if "published" in data:
-            try:
-                published_date = datetime.fromisoformat(data["published"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        published_date = self._parse_timestamp(data.get("published"))
 
-        if "lastModified" in data:
-            try:
-                modified_date = datetime.fromisoformat(data["lastModified"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        modified_date = self._parse_timestamp(data.get("lastModified"))
 
         # Parse affected versions from configurations
         affected_versions = []
@@ -323,7 +314,7 @@ class NVDClient(BaseClient):
             cvss_vector=cvss_vector,
             summary=summary,
             details=details,
-            affected_versions=list(set(affected_versions)),
+            affected_versions=sorted(set(affected_versions)),
             fixed_versions=[],  # NVD doesn't typically provide fixed versions
             published_date=published_date,
             modified_date=modified_date,

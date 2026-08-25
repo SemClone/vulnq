@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, computed_field, field_serializer
 
@@ -173,7 +173,6 @@ class QueryResult(BaseModel):
     vulnerabilities: List[Vulnerability] = Field(
         default_factory=list, description="Found vulnerabilities"
     )
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Query metadata")
     enrichment: Dict[str, SnapshotProvenance] = Field(
         default_factory=dict, description="Snapshot provenance keyed by source"
     )
