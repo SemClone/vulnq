@@ -10,7 +10,8 @@ from rich.text import Text
 
 from . import __version__
 from .core import NoSourcesConfiguredError, VulnerabilityQuery
-from .models import QueryResult, Severity, VersionMatch
+from .models import QueryResult, Severity, VersionMatch, VulnerabilitySource
+from .sources import UnknownSourceError, parse_disabled
 
 console = Console()
 
@@ -300,9 +301,20 @@ def print_markdown(result: QueryResult):
 @click.option(
     "--sources",
     multiple=True,
-    help="Sources to check: osv, github, nvd. Naming vulnerablecode selects it instead.",
+    help="Sources to query: osv, github, nvd, vulnerablecode. Repeatable.",
 )
-@click.option("--use-vulnerablecode", is_flag=True, help="Use VulnerableCode as the primary source")
+@click.option(
+    "--use-vulnerablecode",
+    is_flag=True,
+    help="Query only VulnerableCode (alias for --sources vulnerablecode)",
+)
+@click.option(
+    "--disable-source",
+    "disable_source",
+    multiple=True,
+    envvar="VULNQ_DISABLED_SOURCES",
+    help="Switch a source off whatever else selects it. Repeatable, or comma separated",
+)
 @click.option(
     "--kev-snapshot",
     envvar="VULNQ_KEV_SNAPSHOT",
@@ -333,6 +345,7 @@ def main(
     show_fixes: bool,
     sources: tuple,
     use_vulnerablecode: bool,
+    disable_source: tuple,
     kev_snapshot: Optional[str],
     epss_snapshot: Optional[str],
     snapshot_max_age_days: Optional[int],
@@ -398,8 +411,13 @@ def main(
     # Start from the environment so API keys and snapshot locations reach a
     # subprocess caller, then let explicit flags override.
     config = VulnerabilityQuery.load_config()
-    if use_vulnerablecode:
-        config.use_vulnerablecode = True
+    if disable_source:
+        try:
+            config.disabled_sources = list(parse_disabled(",".join(disable_source)))
+        except UnknownSourceError as e:
+            console.print(f"[red]{e}[/red]")
+            sys.exit(2)
+
     if kev_snapshot:
         config.kev_snapshot = kev_snapshot
     if epss_snapshot:
@@ -407,8 +425,6 @@ def main(
     if snapshot_max_age_days is not None:
         config.snapshot_max_age_days = snapshot_max_age_days
     if sources:
-        from .models import VulnerabilitySource
-
         parsed = []
         for name in sources:
             try:
@@ -418,15 +434,16 @@ def main(
                 console.print(f"[red]Unknown source '{name}'.[/red] Available sources: {valid}")
                 sys.exit(2)
 
-        # VulnerableCode replaces the fan-out rather than joining it, so naming
-        # it here means the same thing as passing --use-vulnerablecode. Doing
-        # nothing instead would leave the caller with no sources at all.
-        if VulnerabilitySource.VULNERABLECODE in parsed:
-            config.use_vulnerablecode = True
-            parsed = [s for s in parsed if s is not VulnerabilitySource.VULNERABLECODE]
-
         if parsed:
+            # VulnerableCode is an ordinary source now, so naming it here joins
+            # it to the others rather than replacing them.
             config.sources = parsed
+
+    # Applied after --sources on purpose. On the previous release the
+    # VulnerableCode switch won over any selection, and someone with it baked
+    # into a job should not quietly start querying something else.
+    if use_vulnerablecode:
+        config.sources = [VulnerabilitySource.VULNERABLECODE]
 
     # Initialize query engine
     try:

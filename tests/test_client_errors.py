@@ -136,7 +136,9 @@ class TestSkippedVersusFailed:
         """The single-source path needs the same honesty."""
         fail_with(monkeypatch, ConnectionError("vulnerablecode unreachable"))
 
-        result = VulnerabilityQuery(config=Configuration(use_vulnerablecode=True)).query(PURL)
+        result = VulnerabilityQuery(
+            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+        ).query(PURL)
 
         assert result.sources_checked == []
         assert any("vulnerablecode" in error for error in result.errors)
@@ -151,7 +153,9 @@ class TestSkippedVersusFailed:
         monkeypatch.setattr("vulnq.clients.base.BaseClient.start_session", no_session)
         monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
 
-        result = VulnerabilityQuery(config=Configuration(use_vulnerablecode=True)).query(CPE)
+        result = VulnerabilityQuery(
+            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+        ).query(CPE)
 
         assert result.sources_checked == []
         assert "vulnerablecode" in result.sources_skipped

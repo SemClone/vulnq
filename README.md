@@ -85,7 +85,11 @@ Queried per lookup, in parallel, then de-duplicated:
 - **OSV.dev** - Google's Open Source Vulnerability database
 - **GitHub Advisory Database** - GitHub Security Advisories
 - **NIST NVD** - National Vulnerability Database
-- **VulnerableCode** - opt-in via `--use-vulnerablecode`, replaces the above
+- **VulnerableCode** - opt-in, and off by default. It aggregates the three
+  above rather than adding to them, and its public instance is not usable
+  anonymously. Select it like any other source with `--sources vulnerablecode`,
+  or alongside them. `--use-vulnerablecode` still works and means "query only
+  VulnerableCode"
 
 Joined from published snapshots rather than queried (see
 [Exploitability Enrichment](#exploitability-enrichment)):
@@ -200,6 +204,11 @@ export NVD_API_KEY="your_nvd_api_key"
 
 # Rate limiting
 export VULNQ_MAX_CONCURRENT="5"
+
+# Switch a source off whatever else selects it. Reported in
+# sources_skipped rather than dropped, so an answer never reads as complete
+# when a feed was not asked.
+export VULNQ_DISABLED_SOURCES="vulnerablecode"
 
 # Exploitability snapshots (see below)
 export VULNQ_KEV_SNAPSHOT="/srv/snapshots"

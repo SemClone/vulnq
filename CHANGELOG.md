@@ -123,7 +123,43 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   put in the advertised file were silently ignored. vulnq is configured through
   environment variables and flags
 
+### Added
+- `VULNQ_DISABLED_SOURCES` and `--disable-source`. A source named there is not
+  queried whatever else selects it, and is reported in `sources_skipped` with
+  the reason rather than dropped, so an answer never reads as complete when a
+  feed was switched off. Disabling every selected source is a configuration
+  error, not a clean scan. Upstreams change hands, gate, or withdraw an API,
+  and turning one off should not need a code change
+
 ### Changed
+- A source is now declared once, in `vulnq/sources.py`: its client, whether it
+  joins the default fan-out, its merge priority. It used to be named across
+  seven files
+- VulnerableCode is an ordinary source. It replaced the whole fan-out rather
+  than joining it, which accounted for fifteen of those sites and a duplicate
+  query path in `core.py` that drifted from the one beside it. That drift is
+  how its findings came to be labelled as coming from OSV. `--sources
+  vulnerablecode` now joins the others, a combination the tool could not
+  express before, and `--use-vulnerablecode` keeps working as an alias for
+  querying only VulnerableCode
+- `Configuration.use_vulnerablecode` is replaced by selecting the source. The
+  `USE_VULNERABLECODE` environment variable and `--use-vulnerablecode` keep
+  working, and still win over an explicit `--sources`, as they did before
+- `Configuration` now refuses unknown keys. pydantic drops them by default, so
+  `Configuration(use_vulnerablecode=True)` against this release, or a plain
+  typo like `tiemout=30`, would have been accepted in silence and the caller
+  would have got defaults they did not ask for
+- A VulnerableCode-only query is now deduplicated and merged like every other
+  source. It used to return records raw, so two records aliasing one CVE came
+  back twice. They are folded into one now, and the ordering is by severity
+  rather than the order the client emitted them
+- Merging two records for one advisory never lowers a severity. Where neither
+  carries a score to derive a rating from, the records simply disagree, and
+  taking the first meant a HIGH could vanish into a LOW and then be removed by
+  a severity filter
+- An unknown name in `VULNQ_DISABLED_SOURCES` or `--disable-source` is refused
+  rather than ignored. Whoever wrote `gitub` believes GitHub is switched off,
+  and ignoring the typo leaves it quietly queried
 - `QueryResult.filter_by_severity` returns `(kept, withheld)` rather than a
   list, so a caller can report what a filter removed instead of presenting a
   shortened list as the whole answer. JSON output is unaffected
