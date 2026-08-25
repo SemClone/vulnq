@@ -23,6 +23,7 @@ from .models import (
 )
 from .sources import BY_SOURCE, MERGE_PRIORITY, SELECTABLE_SOURCES, parse_disabled
 from .utils import detect_identifier_type, parse_identifier
+from .versions import sort_versions
 
 # How strong a claim each version-match state represents. Merging two records
 # for the same CVE keeps the strongest: if one source actually checked the
@@ -238,7 +239,9 @@ class VulnerabilityQuery:
         # duplicating this logic and drifting from it, which is how findings
         # from it were labelled as coming from OSV.
         vulnerabilities = await self._query_all_sources(identifier, id_type, package_info, result)
-        result.vulnerabilities = self._deduplicate_vulnerabilities(vulnerabilities)
+        result.vulnerabilities = self._deduplicate_vulnerabilities(
+            vulnerabilities, package_info.ecosystem if package_info else None
+        )
 
         # Sources disagree about offsets, so without this one envelope can
         # carry NVD's naive timestamps beside OSV's offset-aware ones and a
@@ -340,7 +343,7 @@ class VulnerabilityQuery:
         return all_vulnerabilities
 
     def _deduplicate_vulnerabilities(
-        self, vulnerabilities: List[Vulnerability]
+        self, vulnerabilities: List[Vulnerability], ecosystem: Optional[str] = None
     ) -> List[Vulnerability]:
         """Deduplicate and consolidate vulnerability list.
 
@@ -351,6 +354,7 @@ class VulnerabilityQuery:
 
         Args:
             vulnerabilities: List of vulnerabilities from all sources
+            ecosystem: PURL type, so merged version lists keep their order
 
         Returns:
             Deduplicated and consolidated list
@@ -380,7 +384,7 @@ class VulnerabilityQuery:
             if len(group) == 1:
                 consolidated.append(group[0])
             else:
-                merged = self._merge_vulnerabilities(group)
+                merged = self._merge_vulnerabilities(group, ecosystem)
                 consolidated.append(merged)
 
         # Sort by severity and ID
@@ -388,7 +392,9 @@ class VulnerabilityQuery:
 
         return consolidated
 
-    def _merge_vulnerabilities(self, vulnerabilities: List[Vulnerability]) -> Vulnerability:
+    def _merge_vulnerabilities(
+        self, vulnerabilities: List[Vulnerability], ecosystem: Optional[str] = None
+    ) -> Vulnerability:
         """Merge multiple vulnerability records into one.
 
         Priority order for data sources:
@@ -479,6 +485,13 @@ class VulnerabilityQuery:
                 # Stored normalized, so a merged record does not present one
                 # source's naive timestamp beside another's offset-aware one.
                 merged.published_date = _as_utc(vuln.published_date)
+
+        # Each source ordered its own list, but merging appends one onto the
+        # other, so the result is ordered only by which source answered first.
+        # The consumer reads the first entry as the earliest fix, so the whole
+        # thing is ordered again once everything has been folded in.
+        merged.affected_versions = sort_versions(ecosystem, merged.affected_versions)
+        merged.fixed_versions = sort_versions(ecosystem, merged.fixed_versions)
 
         return merged
 

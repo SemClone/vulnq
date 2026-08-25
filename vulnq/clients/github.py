@@ -6,7 +6,7 @@ from packageurl import PackageURL
 
 from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
-from ..versions import evaluate_range
+from ..versions import evaluate_range, sort_versions
 from .base import BaseClient, RateLimitError, UnsupportedQueryError
 
 # PURL type to GitHub SecurityAdvisoryEcosystem. Both spellings of the Go purl
@@ -448,8 +448,12 @@ class GitHubClient(BaseClient):
             cvss_vector=cvss_vector,
             summary=advisory.get("summary", ""),
             details=advisory.get("description", ""),
-            affected_versions=affected_versions,
-            fixed_versions=fixed_versions,
+            affected_versions=sort_versions(ecosystem, affected_versions),
+            # GitHub reports one first-patched version per advisory, so this
+            # cannot reorder anything today. Kept so every client answers the
+            # same way if that ever changes, and because the merge folds these
+            # into a list that does need ordering.
+            fixed_versions=sort_versions(ecosystem, fixed_versions),
             published_date=published_date,
             modified_date=modified_date,
             references=references,

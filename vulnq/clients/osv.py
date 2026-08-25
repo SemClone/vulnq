@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
+from ..versions import sort_versions
 from .base import BaseClient, UnsupportedQueryError
 
 # Pages to fetch before giving up. OSV returns up to 1000 records per page and
@@ -83,7 +84,7 @@ class OSVClient(BaseClient):
                 f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 
-        return self._parse_vulns(vulns, self._queried_version(purl))
+        return self._parse_vulns(vulns, self._queried_version(purl), self._ecosystem_of(purl))
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -100,7 +101,10 @@ class OSVClient(BaseClient):
         raise UnsupportedQueryError("OSV cannot be queried by CPE; use a PURL")
 
     def _parse_vulns(
-        self, vulns: List[Dict[str, Any]], queried_version: Optional[str] = None
+        self,
+        vulns: List[Dict[str, Any]],
+        queried_version: Optional[str] = None,
+        ecosystem: Optional[str] = None,
     ) -> List[Vulnerability]:
         """Turn OSV records into Vulnerability objects.
 
@@ -120,7 +124,7 @@ class OSVClient(BaseClient):
 
         for vuln_data in vulns:
             try:
-                vuln = self._parse_vulnerability(vuln_data, queried_version)
+                vuln = self._parse_vulnerability(vuln_data, queried_version, ecosystem)
                 if vuln:
                     vulnerabilities.append(vuln)
                 else:
@@ -148,7 +152,10 @@ class OSVClient(BaseClient):
         return vulnerabilities
 
     def _parse_vulnerability(
-        self, data: Dict[str, Any], queried_version: Optional[str] = None
+        self,
+        data: Dict[str, Any],
+        queried_version: Optional[str] = None,
+        ecosystem: Optional[str] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
@@ -269,12 +276,17 @@ class OSVClient(BaseClient):
             # on every run. Two scans of one package could not be diffed
             # without phantom changes, and nothing downstream could checksum
             # the envelope.
-            affected_versions=sorted(set(affected_versions)),
-            fixed_versions=sorted(set(fixed_versions)),
+            affected_versions=sort_versions(ecosystem, affected_versions),
+            fixed_versions=sort_versions(ecosystem, fixed_versions),
             published_date=published_date,
             modified_date=modified_date,
             references=references,
-            cwe_ids=[],  # OSV doesn't typically provide CWE IDs
+            # OSV does carry these, in the block GitHub-sourced advisories use.
+            # Declared and hardcoded empty, the field read as "this advisory
+            # has no classification" rather than "we did not extract one", and
+            # CWE-506 and CWE-912 are what separate a package that is malware
+            # from one whose description merely mentions malicious input.
+            cwe_ids=self._normalize_cwe_ids((data.get("database_specific") or {}).get("cwe_ids")),
             aliases=aliases,
             version_match=(
                 VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED

@@ -19,7 +19,9 @@ and a range we cannot parse is not evidence of safety.
 """
 
 import re
-from typing import Any, List, Optional, Tuple
+from functools import cmp_to_key, lru_cache
+from itertools import combinations
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 # Ecosystems whose versions follow PEP 440 rather than semver.
 _PEP440_ECOSYSTEMS = {"pypi", "pip"}
@@ -387,6 +389,7 @@ def _compare_pep440(left: str, right: str) -> int:
     return -1 if left_version < right_version else 1
 
 
+@lru_cache(maxsize=100_000)
 def compare_versions(ecosystem: Optional[str], left: str, right: str) -> Optional[int]:
     """Order two versions within an ecosystem.
 
@@ -486,3 +489,136 @@ def evaluate_range(ecosystem: Optional[str], version: str, vulnerable_range: str
             return False
 
     return True
+
+
+# Ecosystems whose ordering this module actually implements, plus the ones
+# semver describes well enough. Distribution packages are deliberately absent:
+# dpkg and rpm order an epoch above everything and a revision above the release
+# it revises, so semver rules give a confident and wrong answer there. Ordering
+# a version list is a claim, and it is better not to make one than to make it
+# backwards. Range evaluation is unaffected, and tracked separately.
+_UNORDERED_ECOSYSTEMS = frozenset(
+    {"deb", "debian", "ubuntu", "rpm", "redhat", "suse", "alpine", "apk"}
+)
+
+
+# A range expression carries a comparison or a separator. A plain version does
+# not, and only a plain version can be ordered against another.
+_RANGE_MARKERS = ("<", ">", "=", ",", " ", "*")
+
+# A trailing wildcard component names a family rather than a version:
+# "nightly-0.28.x" appears in OSV data and cannot be ordered against a
+# concrete release any more than ">=0.28, <0.29" can.
+_WILDCARD_COMPONENT = re.compile(r"(^|[.\-])[xX*]$")
+
+
+def _is_plain_version(value: str) -> bool:
+    """Return whether a value is a single version rather than a range.
+
+    Args:
+        value: An entry from an affected or fixed version list
+
+    Returns:
+        True if it names one version
+    """
+    if not value or any(marker in value for marker in _RANGE_MARKERS):
+        return False
+
+    return not _WILDCARD_COMPONENT.search(value)
+
+
+def sort_versions(ecosystem: Optional[str], values: Iterable[str]) -> List[str]:
+    """Order and deduplicate a version list the way its ecosystem orders.
+
+    These lists mix single versions with range expressions like
+    ">=2.2, <2.2.28", and only the first kind can be ordered. Plain versions
+    come first in the ecosystem's own order, then the ranges, so the first
+    entry of a fixed-versions list is the earliest fix rather than whichever
+    string sorted first: lexicographically 10.0.0 precedes 2.2.28.
+
+    Never raises, and never drops a value it cannot order. Where the
+    ecosystem's own comparison declines a pair, as it does for Debian revision
+    suffixes and Maven calendar versions, those two keep the deterministic
+    order they arrived in rather than being ranked.
+
+    Args:
+        ecosystem: PURL type, e.g. "npm" or "maven". None uses semver rules.
+        values: The versions to order
+
+    Returns:
+        A deduplicated list, ordered as far as the ecosystem allows
+    """
+    unique = sorted({value for value in values if isinstance(value, str) and value})
+
+    if (ecosystem or "").lower() in _UNORDERED_ECOSYSTEMS:
+        # Deduplicated and deterministic, but not ranked, because this module
+        # does not know how to rank them.
+        return unique
+
+    plain = [value for value in unique if _is_plain_version(value)]
+    ranges = [value for value in unique if not _is_plain_version(value)]
+
+    # A string the ecosystem cannot read at all is not a version it can rank,
+    # so it joins the ranges. Asked of each string on its own rather than of
+    # each pair: being undecidable against one awkward neighbour says nothing
+    # about the string itself, and exiling per pair sent a perfectly good
+    # 2.0.0 to the back merely because the only other entry was junk.
+    # Comparing a string with itself is the cheap test, and it answers for
+    # almost everything. It is not sufficient on its own: semver refuses to
+    # equate 1.0.0+1 with itself because build metadata is not ordered, yet
+    # that version is perfectly placeable against 2.0.0. So anything that
+    # fails the cheap test gets the expensive one before being set aside.
+    readable = set()
+    for value in plain:
+        if compare_versions(ecosystem, value, value) is not None:
+            readable.add(value)
+        elif any(
+            compare_versions(ecosystem, value, other) is not None
+            for other in plain
+            if other != value
+        ):
+            readable.add(value)
+
+    placeable = [value for value in plain if value in readable]
+    unplaceable = [value for value in plain if value not in readable]
+
+    # Fast path. Sorting with the comparator is only unsafe when it declines a
+    # pair, so try it while watching for that. If nothing was declined the
+    # comparator was a total order on this list and the answer is right, for
+    # O(n log n) comparisons rather than O(n squared). Most lists come this
+    # way: undecidability comes from build metadata and unrankable qualifiers,
+    # which are the exception. Skipping it made an ordinary
+    # `vulnq pkg:pypi/django` take six times as long as before.
+    declined = False
+
+    def compare(left: str, right: str) -> int:
+        nonlocal declined
+        verdict = compare_versions(ecosystem, left, right)
+        if verdict is None:
+            declined = True
+            return 0
+        return verdict
+
+    attempt = sorted(placeable, key=cmp_to_key(compare))
+    if not declined:
+        return attempt + unplaceable + ranges
+
+    # Something was declined, so the comparator is not a total order here and
+    # cmp_to_key cannot be trusted: timsort binary-searches among the apparent
+    # equals and never compares the decisive pair, which put releases ahead of
+    # their own prereleases. Ask every pair once instead and build the order
+    # from the decisive verdicts alone. Each version is scored by how many
+    # others it definitely beats, which is a genuine total order and
+    # reproduces the ecosystem's ordering wherever it will give one, leaving
+    # the lexicographic pre-sort to break the ties that remain.
+    verdicts: Dict[Tuple[str, str], Optional[int]] = {}
+    for left, right in combinations(placeable, 2):
+        verdict = compare_versions(ecosystem, left, right)
+        verdicts[(left, right)] = verdict
+        verdicts[(right, left)] = None if verdict is None else -verdict
+
+    beats = {
+        value: sum(1 for other in placeable if verdicts.get((value, other)) == 1)
+        for value in placeable
+    }
+    return sorted(placeable, key=lambda value: beats[value]) + unplaceable + ranges

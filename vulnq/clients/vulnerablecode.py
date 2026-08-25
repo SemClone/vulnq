@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..cvss import coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
+from ..versions import sort_versions
 from .base import BaseClient, UnsupportedQueryError
 
 # Preference order for a CVSS base score. Newest first, because a record
@@ -94,7 +95,9 @@ class VulnerableCodeClient(BaseClient):
         for vuln_data in affecting:
             try:
                 vuln = self._parse_vulnerability(
-                    vuln_data, queried_version=self._queried_version(purl)
+                    vuln_data,
+                    queried_version=self._queried_version(purl),
+                    ecosystem=self._ecosystem_of(purl),
                 )
                 if vuln:
                     vulnerabilities.append(vuln)
@@ -136,13 +139,17 @@ class VulnerableCodeClient(BaseClient):
         return vulnerabilities
 
     def _parse_vulnerability(
-        self, data: Dict[str, Any], queried_version: Optional[str] = None
+        self,
+        data: Dict[str, Any],
+        queried_version: Optional[str] = None,
+        ecosystem: Optional[str] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
             queried_version: Version pinned by the query, if any
+            ecosystem: PURL type, which decides how versions are ordered
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -230,14 +237,15 @@ class VulnerableCodeClient(BaseClient):
             cvss_vector=None,  # VulnerableCode doesn't provide vector strings
             summary=summary,
             details=data.get("description", ""),
-            affected_versions=sorted(set(affected_versions)),
-            fixed_versions=sorted(set(fixed_versions)),
+            affected_versions=sort_versions(ecosystem, affected_versions),
+            fixed_versions=sort_versions(ecosystem, fixed_versions),
             published_date=None,  # VulnerableCode doesn't provide dates in this endpoint
             modified_date=None,
             references=references,
             version_match=(
                 VersionMatch.SOURCE_FILTERED if queried_version else VersionMatch.NOT_EVALUATED
             ),
-            cwe_ids=[],  # Would need to parse from references or description
+            # VulnerableCode serializes these as objects carrying a cwe_id.
+            cwe_ids=self._normalize_cwe_ids(data.get("weaknesses")),
             aliases=aliases,
         )

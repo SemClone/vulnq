@@ -214,6 +214,35 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   nothing changes unless it is set, and a value below one is refused at
   construction rather than deadlocking on `Semaphore(0)`
 
+
+### Fixed
+- `cwe_ids` was declared on every finding and always empty. The OSV and
+  VulnerableCode clients hardcoded it, under a comment claiming OSV does not
+  provide CWEs; it does, in `database_specific.cwe_ids`, which is where
+  GitHub-sourced advisories put it. Always empty, the field read as "this
+  advisory has no classification" rather than "we did not extract one". That
+  distinction carries weight: CWE-506 is Embedded Malicious Code and CWE-912
+  is Hidden Functionality, and together they separate a package that is
+  malware from one whose description merely mentions malicious input
+- Version lists were ordered lexicographically, so `10.0.0` came before
+  `2.2.28` and the first entry of a fixed-versions list was not the earliest
+  fix. The CLI prints the first three under "Fixed In", so that reading was
+  inviting an unnecessary major upgrade, or hiding a patch on the reader's own
+  line. They are now ordered by the ecosystem's own rules, reusing the
+  comparisons already used for range evaluation. Range expressions, which
+  cannot be ordered against a single version, are kept and grouped after them
+  rather than interleaved by accident, as are wildcards like `nightly-0.28.x`
+  that name a family rather than a release, and strings the ecosystem cannot
+  read at all. The lists are ordered again after several sources are merged,
+  since merging appends one onto another and the result would otherwise be
+  ordered by whichever source answered first. Output stays reproducible.
+
+  Distribution packages are deliberately left unranked. dpkg and rpm put an
+  epoch above everything and a revision above the release it revises, so
+  semver rules give a confident and wrong answer for `deb`, `rpm` and `apk`.
+  Their lists are deduplicated and deterministic but make no claim about
+  order, which is what the previous release did by accident
+
 ## [1.4.0] - 2026-08-17
 
 ### Fixed
