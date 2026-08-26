@@ -32,6 +32,18 @@ MAX_PAGES = 25
 # is not optional and not a courtesy.
 REQUIRED_USER_AGENT = "VCIO_API_AGENT"
 
+# Distribution packages are stored qualified here: a Debian package comes back
+# as ...?distro=trixie and a Red Hat one as five per-arch variants. Their
+# advisories are reachable only under those spellings, and the package endpoint
+# reports nothing for them either way, so this client would answer a confident
+# clean for exactly the SBOM inputs VulnerableCode exists to cover. Answering
+# them properly also needs telling an affected relation from a fixing one,
+# which the advisory endpoint does not distinguish. Until that is done, the
+# question is refused rather than answered wrongly.
+_DISTRO_ECOSYSTEMS = frozenset(
+    {"deb", "debian", "ubuntu", "rpm", "redhat", "suse", "opensuse", "alpine", "apk"}
+)
+
 # Which scoring systems may fill cvss_score, newest specification first. The
 # identifiers are VulnerableCode's own, from vulnerabilities/severity_systems.py.
 # Nothing outside this tuple qualifies: an EPSS row is a probability between
@@ -108,6 +120,28 @@ class VulnerableCodeClient(BaseClient):
         """
         self._begin_query()
 
+        parsed = self._parsed(purl)
+
+        if parsed is not None and (parsed.type or "").lower() in _DISTRO_ECOSYSTEMS:
+            # The instance stores these qualified: a Debian package comes back
+            # echoed as ...?distro=trixie, and its advisories are reachable
+            # only under that spelling. Asking bare, as this client does,
+            # would report a confident clean scan for a package the instance
+            # holds CVEs about.
+            raise UnsupportedQueryError(
+                f"VulnerableCode stores {parsed.type} packages under distribution and "
+                "architecture qualifiers this client cannot yet resolve, so asking it "
+                "would report a clean scan for a package it holds advisories about"
+            )
+
+        if parsed is not None and not parsed.version:
+            # Both endpoints answer nothing for a versionless PURL, which is
+            # not the same as the package having nothing.
+            raise UnsupportedQueryError(
+                "VulnerableCode answers nothing for a PURL with no version; "
+                "give the version you are asking about"
+            )
+
         # The instance matches the PURL it was given, verbatim. A qualifier or
         # subpath an SBOM routinely carries turns a hit into a miss:
         # log4j-core@2.14.1?type=jar returns nothing where the bare coordinate
@@ -150,6 +184,21 @@ class VulnerableCodeClient(BaseClient):
         """
         self._begin_query()
         raise UnsupportedQueryError("VulnerableCode cannot be queried by CPE; use a PURL")
+
+    @staticmethod
+    def _parsed(purl: str) -> Optional[PackageURL]:
+        """Return the parsed PURL, or None if it is not one.
+
+        Args:
+            purl: Package URL string
+
+        Returns:
+            The parsed PURL, or None
+        """
+        try:
+            return PackageURL.from_string(purl)
+        except Exception:
+            return None
 
     @staticmethod
     def _bare(purl: str) -> str:

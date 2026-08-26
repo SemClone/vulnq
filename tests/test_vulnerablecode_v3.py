@@ -553,3 +553,64 @@ def test_being_throttled_partway_through_is_not_a_partial_answer():
 
     with pytest.raises(RateLimitError):
         run(client, "pkg:pypi/big@1")
+
+
+def test_stripping_qualifiers_is_safe_only_where_advisories_are_stored_bare():
+    """Dropping qualifiers is a widening, so it is worth saying where it holds.
+
+    Checked live: for maven and npm the instance returns the same advisories
+    for the bare coordinate, ?classifier=sources and ?type=pom, and echoes the
+    bare PURL back. It keys those on the coordinate, so asking bare asks the
+    question the data can answer.
+
+    It does NOT hold for distribution packages, which is why they are refused
+    rather than queried: pkg:deb/debian/curl@7.64.0-4 comes back echoed as
+    ...?distro=trixie, and the advisory endpoint returns two CVEs for the
+    qualified spelling and none for the bare one. An earlier version of this
+    test asserted the bare-keyed behaviour as universal; it is not.
+    """
+    client = wired(recorded("lodash"), recorded("lodash-advisories"))
+    findings = run(client, "pkg:npm/lodash@4.17.20?type=tgz&repository_url=https://r.example")
+
+    assert findings, "the recorded response should still parse"
+    for request in client.sent:
+        assert request["json"]["purls"] == ["pkg:npm/lodash@4.17.20"]
+    assert client.sent[0]["json"]["ignore_qualifiers_subpath"] is True
+
+
+@pytest.mark.parametrize(
+    "purl",
+    [
+        "pkg:deb/debian/curl@7.64.0-4",
+        "pkg:deb/debian/curl@7.64.0-4?distro=trixie",
+        "pkg:rpm/redhat/openssl@1.1.1k-7.el8_6?arch=x86_64",
+        "pkg:apk/alpine/openssl@1.1.1q-r0",
+    ],
+)
+def test_a_distribution_package_is_refused_rather_than_called_clean(purl):
+    """The instance stores these qualified and this client asks bare, so it
+    would report a confident clean scan for packages the instance holds CVEs
+    about: curl@7.64.0-4 has two, reachable only under ?distro=trixie.
+
+    Refused, so it lands in sources_skipped and the answer says a source could
+    not be asked rather than that it found nothing.
+    """
+    from vulnq.clients.base import UnsupportedQueryError
+
+    with pytest.raises(UnsupportedQueryError, match="qualifiers"):
+        asyncio.run(VulnerableCodeClient().query_purl(purl))
+
+
+def test_a_versionless_purl_is_refused_rather_than_called_clean():
+    """Both endpoints answer nothing for one, which is not the same as the
+    package having nothing: lodash@4.17.20 alone has seven advisories."""
+    from vulnq.clients.base import UnsupportedQueryError
+
+    with pytest.raises(UnsupportedQueryError, match="no version"):
+        asyncio.run(VulnerableCodeClient().query_purl("pkg:npm/lodash"))
+
+
+def test_an_ordinary_package_is_still_answered():
+    """The refusals must not swallow the cases that work."""
+    findings = run(wired(recorded("lodash"), recorded("lodash-advisories")))
+    assert findings
