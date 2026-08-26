@@ -309,6 +309,16 @@ def print_markdown(result: QueryResult):
     help="Query only VulnerableCode (alias for --sources vulnerablecode)",
 )
 @click.option(
+    "--vulnerablecode-api-key",
+    envvar="VULNERABLECODE_API_KEY",
+    help="VulnerableCode API token, which raises its rate limit",
+)
+@click.option(
+    "--vulnerablecode-url",
+    envvar="VULNERABLECODE_URL",
+    help="VulnerableCode API root, for a self-hosted instance",
+)
+@click.option(
     "--disable-source",
     "disable_source",
     multiple=True,
@@ -345,6 +355,8 @@ def main(
     show_fixes: bool,
     sources: tuple,
     use_vulnerablecode: bool,
+    vulnerablecode_api_key: Optional[str],
+    vulnerablecode_url: Optional[str],
     disable_source: tuple,
     kev_snapshot: Optional[str],
     epss_snapshot: Optional[str],
@@ -411,6 +423,11 @@ def main(
     # Start from the environment so API keys and snapshot locations reach a
     # subprocess caller, then let explicit flags override.
     config = VulnerabilityQuery.load_config()
+    if vulnerablecode_api_key:
+        config.vulnerablecode_api_key = vulnerablecode_api_key
+    if vulnerablecode_url:
+        config.vulnerablecode_url = vulnerablecode_url
+
     if disable_source:
         try:
             config.disabled_sources = list(parse_disabled(",".join(disable_source)))

@@ -86,10 +86,14 @@ Queried per lookup, in parallel, then de-duplicated:
 - **GitHub Advisory Database** - GitHub Security Advisories
 - **NIST NVD** - National Vulnerability Database
 - **VulnerableCode** - opt-in, and off by default. It aggregates the three
-  above rather than adding to them, and its public instance is not usable
-  anonymously. Select it like any other source with `--sources vulnerablecode`,
-  or alongside them. `--use-vulnerablecode` still works and means "query only
-  VulnerableCode"
+  above rather than adding to them. Select it like any other source with
+  `--sources vulnerablecode`, or alongside them; `--use-vulnerablecode` still
+  means "query only VulnerableCode". Anonymous access works and is throttled
+  at ten requests a minute. `VULNERABLECODE_API_KEY` raises that limit, and
+  `VULNERABLECODE_URL` points at a self-hosted instance. Its advisory endpoint
+  pages at a hundred, so a package with many hundreds of advisories needs more
+  requests than the anonymous budget allows and will report throttling rather
+  than a partial answer
 
 Joined from published snapshots rather than queried (see
 [Exploitability Enrichment](#exploitability-enrichment)):

@@ -1,14 +1,13 @@
 """Tests for source configuration and the failure paths around it."""
 
 import pytest
-
 from click.testing import CliRunner
 
 from vulnq import NoSourcesConfiguredError, VulnerabilitySource
 from vulnq.cli import main
 from vulnq.core import VulnerabilityQuery
-from vulnq.sources import SELECTABLE_SOURCES
 from vulnq.models import Configuration, IdentifierType, QueryResult
+from vulnq.sources import SELECTABLE_SOURCES
 
 
 class TestSourceEnum:

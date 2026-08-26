@@ -131,6 +131,38 @@ that `QueryResult(..., metadata={...})` is now ignored rather than rejected.
   error, not a clean scan. Upstreams change hands, gate, or withdraw an API,
   and turning one off should not need a code change
 
+### Fixed
+- The VulnerableCode client called an API that no longer exists. Every v1
+  endpoint answers 404, and the 403 seen before that was a missing
+  `User-Agent: VCIO_API_AGENT` rather than a missing token, so
+  `--use-vulnerablecode` could not work for anybody. It now uses v3: one
+  request for which advisories affect the package and which versions fix it,
+  another for the severities, CVSS vectors and weaknesses, joined on the
+  advisory identifier. Anonymous access works and is throttled at ten requests
+  a minute, which is reported as throttling rather than as a failure;
+  `VULNERABLECODE_API_KEY` raises the limit and `VULNERABLECODE_URL` points at
+  a self-hosted instance
+- The client also read a `scores` key at a level the API has never served, so
+  even a reachable instance would have returned findings with no severity. Its
+  tests passed because they fed it that invented shape. Every payload under
+  `tests/fixtures/vulnerablecode` is now recorded from the live API.
+
+  Its advisory endpoint pages at a hundred and a large package has many
+  hundreds, so every page is read; the page number goes in the request body
+  because the `next` link the response carries answers 405 and points at
+  http. A query that runs out of the anonymous ten-a-minute budget partway
+  through reports throttling rather than the pages that arrived first.
+
+  The PURL is sent in its canonical spelling with qualifiers and subpath
+  disregarded. The instance matches verbatim otherwise, so
+  `log4j-core@2.14.1?type=jar`, which is how an SBOM writes it, returned
+  nothing where the bare coordinate returns twelve advisories including
+  Log4Shell, and `pkg:npm/@babel/traverse` returned nothing where the
+  percent-encoded form finds its advisory. Both endpoints are given the bare
+  coordinate: only the package one can be told to disregard qualifiers, so a
+  qualified PURL used to return findings stripped of every severity, score and
+  classification rather than no findings at all
+
 ### Changed
 - A source is now declared once, in `vulnq/sources.py`: its client, whether it
   joins the default fan-out, its merge priority. It used to be named across

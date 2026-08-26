@@ -106,6 +106,11 @@ class VulnerabilityQuery:
         # Load API keys from environment
         config.github_token = os.environ.get("GITHUB_TOKEN")
         config.nvd_api_key = os.environ.get("NVD_API_KEY")
+        # Documented in the README, so they have to be read here or the README
+        # is describing knobs that do not exist. Anonymous access works; the
+        # token only raises the ten-a-minute limit.
+        config.vulnerablecode_api_key = os.environ.get("VULNERABLECODE_API_KEY") or None
+        config.vulnerablecode_url = os.environ.get("VULNERABLECODE_URL") or None
 
         # Kept for callers that already set it. It always meant "query only
         # VulnerableCode", which is now just a selection like any other.

@@ -1,12 +1,13 @@
 """Tests for utility functions."""
 
 import pytest
+
+from vulnq.models import IdentifierType
 from vulnq.utils import (
     detect_identifier_type,
-    parse_purl,
     parse_cpe,
+    parse_purl,
 )
-from vulnq.models import IdentifierType
 
 
 class TestDetectIdentifierType:

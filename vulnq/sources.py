@@ -82,10 +82,14 @@ REGISTRY: Tuple[SourceSpec, ...] = (
     ),
     SourceSpec(
         source=VulnerabilitySource.VULNERABLECODE,
-        build=lambda c, v: VulnerableCodeClient(**_common(c, v)),
-        # Opt-in. It aggregates the three above rather than adding to them, and
-        # its public instance is not usable anonymously, so querying it unasked
-        # would spend a request to report a failure.
+        build=lambda c, v: VulnerableCodeClient(
+            api_key=c.vulnerablecode_api_key,
+            base_url=c.vulnerablecode_url,
+            **_common(c, v),
+        ),
+        # Opt-in. It aggregates the three above rather than adding to them,
+        # and its public instance is throttled at ten requests a minute, so
+        # querying it unasked would spend that budget on a second-hand answer.
         in_default_fanout=False,
         merge_priority=4,
     ),

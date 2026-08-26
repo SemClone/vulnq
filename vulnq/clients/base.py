@@ -30,6 +30,17 @@ class UnsupportedQueryError(Exception):
     pass
 
 
+class MissingCredentialError(Exception):
+    """Raised when a source refused the request for want of a credential.
+
+    Distinct from a failure and from an unsupported query: the source is
+    reachable and the question is answerable, but not by this caller. The fix
+    is a token, and saying so is more use than relaying a bare 403.
+    """
+
+    pass
+
+
 class BaseClient(ABC):
     """Abstract base class for vulnerability API clients."""
 
@@ -182,6 +193,9 @@ class BaseClient(ABC):
             if not isinstance(value, str):
                 continue
             candidate = value.strip().upper()
+            if candidate.isdigit():
+                # VulnerableCode writes the number alone: "89", not "CWE-89".
+                candidate = f"CWE-{candidate}"
             if not candidate.startswith("CWE-"):
                 continue
             if candidate not in found:
