@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- vulnq ships its PEP 561 `py.typed` marker (#57). Without it a type checker
+  will not read annotations from an installed package, so every consumer saw
+  vulnq as untyped and had to suppress the import rather than check it, losing
+  annotations that were already written. `pyproject.toml` already declared the
+  marker under `package-data`; setuptools silently ignores a glob that matches
+  nothing, so the missing file never surfaced at build time.
+
+## [Unreleased]
+
 ## [1.5.0] - 2026-08-25
 
 ### Added
