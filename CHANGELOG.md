@@ -5,6 +5,8 @@ All notable changes to vulnq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [1.5.1] - 2026-09-01
 
 ### Fixed
@@ -14,8 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   annotations that were already written. `pyproject.toml` already declared the
   marker under `package-data`; setuptools silently ignores a glob that matches
   nothing, so the missing file never surfaced at build time.
-
-## [Unreleased]
 
 ## [1.5.0] - 2026-08-25
 
