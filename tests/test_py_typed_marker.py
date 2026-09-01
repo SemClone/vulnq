@@ -12,7 +12,6 @@ marker that never reaches the installed package: setuptools silently ignores a
 package-data glob that matches nothing, which is how this went unnoticed.
 """
 
-import tomllib
 from pathlib import Path
 
 import vulnq
@@ -28,8 +27,11 @@ def test_the_marker_sits_in_the_installed_package():
 
 
 def test_the_marker_is_declared_as_package_data():
-    """Without this, the file exists in the tree and never ships."""
+    """Without this, the file exists in the tree and never ships.
+
+    Read as text rather than parsed: this package supports Python 3.8, which
+    has no tomllib, and the declaration is a fixed one-liner.
+    """
     root = Path(__file__).resolve().parent.parent
-    config = tomllib.loads((root / "pyproject.toml").read_text())
-    package_data = config["tool"]["setuptools"]["package-data"]
-    assert "py.typed" in package_data["vulnq"]
+    pyproject = (root / "pyproject.toml").read_text()
+    assert 'vulnq = ["py.typed"]' in pyproject
