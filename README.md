@@ -85,8 +85,15 @@ Queried per lookup, in parallel, then de-duplicated:
 - **OSV.dev** - Google's Open Source Vulnerability database
 - **GitHub Advisory Database** - GitHub Security Advisories
 - **NIST NVD** - National Vulnerability Database
-- **VulnerableCode** - opt-in, and off by default. It aggregates the three
-  above rather than adding to them. Select it like any other source with
+- **VulnerableCode** - **deprecated, and scheduled for removal in 2.0.** It is
+  opt-in and off by default, and it aggregates the three above rather than
+  adding to them: measured across fifteen packages in eight ecosystems it
+  returns fewer findings than they do together, with worse severities and
+  classifications, and eleven of the findings it returns that they do not are
+  false positives. The `deb` and `rpm` packages it declines are answered by OSV
+  today. Nothing is lost by leaving it off; the reasoning and the measurements
+  are in [the evaluation](docs/evaluations/vulnerablecode.md). Until it goes,
+  select it like any other source with
   `--sources vulnerablecode`, or alongside them; `--use-vulnerablecode` still
   means "query only VulnerableCode". Anonymous access works and is throttled
   at ten requests a minute. `VULNERABLECODE_API_KEY` raises that limit, and

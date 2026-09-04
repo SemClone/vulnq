@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+- The `vulnerablecode` source is deprecated and will be removed in 2.0 (#53).
+  It stays opt-in and unchanged until then; nothing selects it unasked, so no
+  default query is affected. What replaces it is OSV, GitHub and NVD, which
+  vulnq already queries and which answer more, and better, than it does
+
+### Documentation
+- `docs/evaluations/vulnerablecode.md` — whether to keep, fix or remove the
+  VulnerableCode source (#53). Removal was carried out on a scratch tree to
+  price it: three paths deleted, 328 lines across twelve files, suite 539 → 471
+  and green. Against fifteen packages in eight ecosystems it returned 122
+  findings where OSV, GitHub and NVD together returned 152, and of the 36 it
+  returned that they did not, 11 are false positives caused by reading a fixed
+  version without an introduced one. The `deb` and `rpm` gap that opened the
+  issue is already answered by OSV, which vulnq queries by default. The
+  evaluation also records a defect it found rather than created:
+  `VULNQ_DISABLED_SOURCES` is parsed outside the handler that catches an
+  unknown source, so a typo in it exits 1 with a traceback where
+  `--disable-source` exits 2 with the valid names. No behaviour changes
+
 ## [1.5.1] - 2026-09-01
 
 ### Fixed
