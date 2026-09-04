@@ -18,11 +18,9 @@ import pathlib
 
 import pytest
 
-from vulnq.clients.base import UnsupportedQueryError
 from vulnq.clients.osv import OSVClient
-from vulnq.clients.vulnerablecode import VulnerableCodeClient
 from vulnq.models import VulnerabilitySource
-from vulnq.sources import DEFAULT_SOURCES, MERGE_PRIORITY, SELECTABLE_SOURCES
+from vulnq.sources import MERGE_PRIORITY
 
 ROOT = pathlib.Path(__file__).parent.parent
 EVALUATION = ROOT / "docs" / "evaluations" / "vulnerablecode.md"
@@ -62,11 +60,14 @@ class TestTheEvaluationIsWhereItSaysItIs:
 
 
 class TestTheFactsTheRecommendationRestsOn:
-    """Each of these is quoted in the document as a reason to remove."""
+    """Each of these is quoted in the document as a reason to remove.
 
-    def test_vulnerablecode_is_opt_in(self):
-        assert VulnerabilitySource.VULNERABLECODE in SELECTABLE_SOURCES
-        assert VulnerabilitySource.VULNERABLECODE not in DEFAULT_SOURCES
+    Two more are quoted and are not repeated here, because the tree already
+    pins them and a second copy would be one more thing to keep in step:
+    that the source is selectable but not in the default fan-out lives in
+    test_source_registry.py, and that it refuses distribution PURLs lives in
+    test_vulnerablecode_v3.py, which also asserts the reason it gives.
+    """
 
     def test_it_defers_to_every_other_source(self):
         """Lower wins, so the largest number is the one that never decides."""
@@ -76,13 +77,6 @@ class TestTheFactsTheRecommendationRestsOn:
             if source is not VulnerabilitySource.VULNERABLECODE
         ]
         assert MERGE_PRIORITY[VulnerabilitySource.VULNERABLECODE] > max(others)
-
-    @pytest.mark.parametrize("purl", DISTRO_PURLS)
-    def test_vulnerablecode_still_refuses_distribution_packages(self, purl):
-        """The gap that opened the issue. If this ever stops raising, the
-        evaluation's premise has changed and it needs rewriting."""
-        with pytest.raises(UnsupportedQueryError):
-            asyncio.run(VulnerableCodeClient().query_purl(purl))
 
 
 class TestRemovalWouldNotCreateTheGap:

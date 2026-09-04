@@ -51,7 +51,7 @@ at `c58ffe4`, the suite was run, and the diff was counted.
 |---|---|
 | `vulnq/clients/vulnerablecode.py` | 510 lines |
 | `tests/test_vulnerablecode_v3.py` | 616 lines, 51 tests |
-| `tests/fixtures/vulnerablecode/` | 6 JSON files, 2,869 lines, 132 KB |
+| `tests/fixtures/vulnerablecode/` | 6 JSON files, 2,869 lines, 113 KB |
 
 ### Edited
 
@@ -68,6 +68,13 @@ substitution.
 | `vulnq/clients/__init__.py` | one import and one `__all__` entry |
 | `tests/` (8 files) | see below |
 | `README.md` | the source bullet, two sentences elsewhere, one env-var example |
+
+Four further files name VulnerableCode and are deliberately absent from that
+table: `vulnq/clients/base.py`, `vulnq/cvss.py`, `tests/test_cvss.py` and
+`tests/test_pypi_normalization.py`. Each mentions it only in a comment or a
+docstring, explaining a shape the parser still has to handle because some other
+source sends it too. None is a line the removal has to touch, so `git grep -il
+vulnerablecode` overstates the surface by four files.
 
 That the registry absorbs it in one `SourceSpec` is not luck. `vulnq/sources.py`
 was written for exactly this: *"When a feed changes hands, gates, or starts
@@ -113,13 +120,22 @@ The five surfaces that stop working:
 | `--sources vulnerablecode` | exit 2, names the valid sources |
 | `--use-vulnerablecode` | `no such option` from click, exit 2 |
 | `USE_VULNERABLECODE=true` | silently ignored — **the one quiet failure** |
-| `VULNQ_DISABLED_SOURCES=vulnerablecode` | `UnknownSourceError`, exit 2 |
+| `VULNQ_DISABLED_SOURCES=vulnerablecode` | `UnknownSourceError` as an uncaught traceback, exit 1 |
 | `Configuration(sources=[VulnerabilitySource.VULNERABLECODE])` | `AttributeError` |
 
 Only `USE_VULNERABLECODE` fails quietly, and only because `core.py` reads it
 with `os.environ.get`. Anyone with it set in a job would start getting the
 default fan-out without being told. That single case is the argument for a
 deprecation release rather than a straight delete — see [section 5](#5-deprecation-path).
+
+The `VULNQ_DISABLED_SOURCES` row is loud but not clean, and that is a defect
+this evaluation found rather than one removal would create. `--disable-source`
+raises the same `UnknownSourceError` and `cli.py` catches it, printing the valid
+sources and exiting 2. The environment variable is parsed earlier, in
+`VulnerabilityQuery.load_config()` at `vulnq/core.py:123`, outside that handler,
+so a typo in it prints a traceback and exits 1 today — for any source name, not
+just this one. Worth its own issue, and worth fixing before the deprecation
+release puts more traffic through that path.
 
 ---
 
@@ -381,16 +397,29 @@ The deprecation release costs about thirty lines and three tests.
 
 ## 6. Replacing it
 
-The issue asks what it would cost to replace VulnerableCode with **REI**.
+The issue asks what VulnerableCode should be replaced with.
 
-**REI could not be identified.** It appears nowhere in this repository, in the
-`SemClone` organisation, or in public vulnerability-data tooling. This section
-therefore states the contract any replacement has to meet, so the answer is a
-short one once REI is named.
+**Nothing new. The replacement is the sources vulnq already queries.**
 
-### What a replacement has to provide
+That is not a deferral, it is what section 2 measured. OSV, GitHub and NVD
+together return more than VulnerableCode does in every ecosystem tested, with
+better severities, better classifications and no confirmed false positives, and
+section 3 shows OSV already answering the `deb` and `rpm` coordinates this issue
+was opened about. The slot VulnerableCode occupies is not a gap that needs
+filling once it is empty; it is a fourth opinion that was quietly worse than the
+first three.
 
-VulnerableCode's slot in vulnq is narrow. A replacement needs exactly this:
+So the work is section 1 plus one thing: close the Alpine gap in the OSV client
+(roughly a day, see [The Alpine
+gap](#the-alpine-gap-the-only-thing-removal-actually-costs)). After that vulnq's
+distro coverage is strictly better than it is today, with one fewer source and
+two fewer requests per query.
+
+### What a future fourth source would have to provide
+
+If a fourth source is proposed later, this is the contract, recorded here so the
+question does not have to be re-derived. The slot is narrow, and a candidate
+needs exactly this:
 
 | Requirement | Why |
 |---|---|
@@ -413,11 +442,14 @@ of them and a CWE classification on 142.
 
 ### The circular-dependency check
 
-If REI is a consolidation layer that consumes `vulnq` as an input, it cannot be
-a `vulnq` source — the dependency runs the other way. In that case the answer to
-this issue is simply section 1, with no replacement at all: remove the source,
-close the Alpine gap in the OSV client, and let the consolidation layer consume
-the result.
+One disqualifier is worth applying before any of the above, because it is the
+cheapest to answer and it rules a candidate out outright: a tool that consumes
+`vulnq` as an input cannot also be a `vulnq` source. The dependency runs the
+other way, and wiring it back would have vulnq asking a question of something
+whose answer is built from vulnq's own.
+
+Ask it first of anything proposed as a fourth source. A consolidation layer
+downstream of vulnq is a consumer of this result, not a contributor to it.
 
 ---
 
