@@ -422,7 +422,17 @@ def main(
 
     # Start from the environment so API keys and snapshot locations reach a
     # subprocess caller, then let explicit flags override.
-    config = VulnerabilityQuery.load_config()
+    #
+    # Wrapped because load_config parses VULNQ_DISABLED_SOURCES, which raises
+    # the same UnknownSourceError --disable-source does below. It used to raise
+    # it out here, where nothing caught it, so a typo in the variable printed a
+    # traceback and exited 1 while the identical typo in the flag printed the
+    # valid sources and exited 2. Same mistake, same message, same exit code.
+    try:
+        config = VulnerabilityQuery.load_config()
+    except UnknownSourceError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(2)
     if vulnerablecode_api_key:
         config.vulnerablecode_api_key = vulnerablecode_api_key
     if vulnerablecode_url:
