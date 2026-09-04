@@ -85,22 +85,6 @@ Queried per lookup, in parallel, then de-duplicated:
 - **OSV.dev** - Google's Open Source Vulnerability database
 - **GitHub Advisory Database** - GitHub Security Advisories
 - **NIST NVD** - National Vulnerability Database
-- **VulnerableCode** - **deprecated, and scheduled for removal in 2.0.** It is
-  opt-in and off by default, and it aggregates the three above rather than
-  adding to them: measured across fifteen packages in eight ecosystems it
-  returns fewer findings than they do together, with worse severities and
-  classifications, and eleven of the findings it returns that they do not are
-  false positives. The `deb` and `rpm` packages it declines are answered by OSV
-  today. Nothing is lost by leaving it off; the reasoning and the measurements
-  are in [the evaluation](docs/evaluations/vulnerablecode.md). Until it goes,
-  select it like any other source with
-  `--sources vulnerablecode`, or alongside them; `--use-vulnerablecode` still
-  means "query only VulnerableCode". Anonymous access works and is throttled
-  at ten requests a minute. `VULNERABLECODE_API_KEY` raises that limit, and
-  `VULNERABLECODE_URL` points at a self-hosted instance. Its advisory endpoint
-  pages at a hundred, so a package with many hundreds of advisories needs more
-  requests than the anonymous budget allows and will report throttling rather
-  than a partial answer
 
 Joined from published snapshots rather than queried (see
 [Exploitability Enrichment](#exploitability-enrichment)):
@@ -114,9 +98,9 @@ result that reads as a clean scan.
 
 ### An empty result means "we looked and found nothing"
 
-Not every source can answer every identifier. OSV, GitHub, and VulnerableCode
-are keyed by PURL and have no CPE lookup; NVD is keyed by CPE and can only take
-the PURLs it can convert. A source that cannot be asked, or that fails when
+Not every source can answer every identifier. OSV and GitHub are keyed by PURL
+and have no CPE lookup; NVD is keyed by CPE and can only take the PURLs it can
+convert. A source that cannot be asked, or that fails when
 asked, is never counted as having answered:
 
 - `sources_checked` — ran and returned an answer
@@ -153,9 +137,9 @@ if you can see it happened.
 
 ### Version matching
 
-Sources disagree about who filters by version. OSV, NVD, and VulnerableCode do
-it server-side. The GitHub Advisory Database returns every advisory it holds
-for a package and leaves the filtering to the caller, in a range grammar like
+Sources disagree about who filters by version. OSV and NVD do it server-side.
+The GitHub Advisory Database returns every advisory it holds for a package and
+leaves the filtering to the caller, in a range grammar like
 `>= 2.0-beta9, < 2.25.3`. vulnq evaluates those using the ecosystem's own
 version ordering — semver, Maven qualifier ranks, or PEP 440.
 
@@ -219,7 +203,7 @@ export VULNQ_MAX_CONCURRENT="5"
 # Switch a source off whatever else selects it. Reported in
 # sources_skipped rather than dropped, so an answer never reads as complete
 # when a feed was not asked.
-export VULNQ_DISABLED_SOURCES="vulnerablecode"
+export VULNQ_DISABLED_SOURCES="nvd"
 
 # Exploitability snapshots (see below)
 export VULNQ_KEV_SNAPSHOT="/srv/snapshots"

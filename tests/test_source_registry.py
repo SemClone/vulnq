@@ -357,7 +357,18 @@ def test_no_source_spec_declares_something_nothing_reads():
     from vulnq.sources import SourceSpec
 
     declared = {f.name for f in dataclasses.fields(SourceSpec)}
-    assert declared == {"source", "build", "in_default_fanout", "merge_priority"}
+    assert declared == {
+        "source",
+        "build",
+        "in_default_fanout",
+        "merge_priority",
+        # Read by deprecation_warning, which every path that selects a source
+        # goes through. Both are needed: a warning that names no replacement
+        # release is not actionable, and one that names no alternative tells
+        # the reader to stop without saying what to do instead.
+        "removed_in",
+        "deprecation_note",
+    }
 
 
 def test_a_typo_in_disable_source_is_a_usage_error_not_a_silent_query():

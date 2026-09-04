@@ -21,7 +21,13 @@ from .models import (
     Vulnerability,
     VulnerabilitySource,
 )
-from .sources import BY_SOURCE, MERGE_PRIORITY, SELECTABLE_SOURCES, parse_disabled
+from .sources import (
+    BY_SOURCE,
+    MERGE_PRIORITY,
+    SELECTABLE_SOURCES,
+    parse_disabled,
+    warn_about_deprecated,
+)
 from .utils import detect_identifier_type, parse_identifier
 from .versions import sort_versions
 
@@ -187,6 +193,14 @@ class VulnerabilityQuery:
                 f"No queryable vulnerability sources configured (requested: {requested}). "
                 f"Selectable sources: {selectable}.{hint}"
             )
+
+        # Warned here rather than at each of the three CLI surfaces that can
+        # select a source, because this is where they converge - and because a
+        # library caller passing Configuration(sources=[...]) reaches none of
+        # them and would otherwise be the one caller told nothing. Only sources
+        # actually about to be queried warn: one switched off through
+        # VULNQ_DISABLED_SOURCES is already not being used.
+        warn_about_deprecated(clients)
 
         return clients
 

@@ -35,3 +35,20 @@ def test_the_marker_is_declared_as_package_data():
     root = Path(__file__).resolve().parent.parent
     pyproject = (root / "pyproject.toml").read_text()
     assert 'vulnq = ["py.typed"]' in pyproject
+
+
+def test_the_two_declared_versions_agree():
+    """pyproject.toml is what PyPI publishes; __version__ is what `vulnq
+    --version` and any consumer reading the attribute report.
+
+    They are written by hand in two files and drifted once already: 1.5.1 went
+    out with __version__ still saying 1.5.0, so an installed copy misreported
+    itself and a bug report naming a version named the wrong one. Nothing was
+    checking, which is why nothing noticed.
+
+    Read as text rather than parsed: this package supports Python 3.8, which
+    has no tomllib.
+    """
+    root = Path(__file__).resolve().parent.parent
+    pyproject = (root / "pyproject.toml").read_text()
+    assert f'version = "{vulnq.__version__}"' in pyproject

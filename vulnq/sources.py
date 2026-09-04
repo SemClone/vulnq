@@ -12,8 +12,9 @@ a feed changes hands, gates, or starts charging, the answer should be turning
 it off, not surgery.
 """
 
+import sys
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Iterable, Optional, Tuple
 
 from .clients.base import BaseClient
 from .clients.github import GitHubClient
@@ -32,12 +33,19 @@ class SourceSpec:
         build: Makes the client, given the configuration and verbosity
         in_default_fanout: Whether it is queried when nobody said otherwise
         merge_priority: Lower wins when several sources describe one advisory
+        removed_in: The release that deletes this source, if one is scheduled.
+            Set it and every path that selects the source warns; leave it None
+            and none of them do
+        deprecation_note: What a caller should do instead, appended to the
+            warning. Pointless without removed_in
     """
 
     source: VulnerabilitySource
     build: Callable[[Configuration, bool], BaseClient]
     in_default_fanout: bool
     merge_priority: int
+    removed_in: Optional[str] = None
+    deprecation_note: str = ""
 
 
 def _common(config: Configuration, verbose: bool) -> Dict[str, object]:
@@ -92,6 +100,19 @@ REGISTRY: Tuple[SourceSpec, ...] = (
         # querying it unasked would spend that budget on a second-hand answer.
         in_default_fanout=False,
         merge_priority=4,
+        # Measured against the other three across fifteen packages in eight
+        # ecosystems: it returned 122 findings where they returned 152, missed
+        # 66 they carry, and of the 36 it returned that they did not, 11 were
+        # false positives it produces by reading a fixed version without an
+        # introduced one - axios@0.21.0 reported against nine advisories
+        # introduced in 1.0.0 or later. The deb and rpm packages it declines
+        # are answered by OSV today, in the default fan-out. It defers to all
+        # three on every overlap anyway, so nothing it says ever decides.
+        removed_in="2.0",
+        deprecation_note=(
+            "its ecosystems are covered by osv, github and nvd, which vulnq "
+            "queries by default"
+        ),
     ),
 )
 
@@ -106,6 +127,42 @@ SELECTABLE_SOURCES: Tuple[VulnerabilitySource, ...] = tuple(spec.source for spec
 MERGE_PRIORITY: Dict[VulnerabilitySource, int] = {
     spec.source: spec.merge_priority for spec in REGISTRY
 }
+
+
+def deprecation_warning(source: VulnerabilitySource) -> Optional[str]:
+    """Return the notice a caller selecting this source should see, if any.
+
+    Args:
+        source: The source that was selected
+
+    Returns:
+        A one-line warning, or None if the source is not on the way out
+    """
+    spec = BY_SOURCE.get(source)
+    if spec is None or not spec.removed_in:
+        return None
+
+    warning = f"the {spec.source.value} source is deprecated and will be removed in {spec.removed_in}"
+    if spec.deprecation_note:
+        warning = f"{warning} - {spec.deprecation_note}"
+    return warning
+
+
+def warn_about_deprecated(sources: Iterable[VulnerabilitySource]) -> None:
+    """Write a deprecation notice to stderr for each source on the way out.
+
+    Deliberately stderr and not the rich console the CLI prints results with:
+    a caller reading `vulnq <purl> --format json` on stdout would otherwise get
+    a warning spliced into the document, which is a worse failure than the one
+    the warning is trying to prevent.
+
+    Args:
+        sources: The sources actually about to be queried
+    """
+    for source in sources:
+        warning = deprecation_warning(source)
+        if warning:
+            print(f"warning: {warning}", file=sys.stderr)
 
 
 class UnknownSourceError(ValueError):

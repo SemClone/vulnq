@@ -7,25 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-04
+
 ### Deprecated
 - The `vulnerablecode` source is deprecated and will be removed in 2.0 (#53).
-  It stays opt-in and unchanged until then; nothing selects it unasked, so no
-  default query is affected. What replaces it is OSV, GitHub and NVD, which
-  vulnq already queries and which answer more, and better, than it does
+  Selecting it now prints a warning to stderr naming the release that removes
+  it and what to use instead. It still works, and it is still opt-in, so no
+  default query is affected either way
 
-### Documentation
-- `docs/evaluations/vulnerablecode.md` — whether to keep, fix or remove the
-  VulnerableCode source (#53). Removal was carried out on a scratch tree to
-  price it: three paths deleted, 328 lines across twelve files, suite 539 → 471
-  and green. Against fifteen packages in eight ecosystems it returned 122
-  findings where OSV, GitHub and NVD together returned 152, and of the 36 it
-  returned that they did not, 11 are false positives caused by reading a fixed
-  version without an introduced one. The `deb` and `rpm` gap that opened the
-  issue is already answered by OSV, which vulnq queries by default. The
-  evaluation also records a defect it found rather than created:
-  `VULNQ_DISABLED_SOURCES` is parsed outside the handler that catches an
-  unknown source, so a typo in it exits 1 with a traceback where
-  `--disable-source` exits 2 with the valid names. No behaviour changes
+  It goes because it is measurably the weakest source in the registry, not
+  because it is awkward to maintain. Across fifteen packages in eight
+  ecosystems it returned 122 findings where OSV, GitHub and NVD together
+  returned 152, and missed 66 those three carry. Of the 36 it returned that
+  they did not, 11 were false positives it produces by reading a fixed version
+  without an introduced one — `axios@0.21.0` reported against nine advisories
+  introduced in 1.0.0 or later — and 5 were duplicates under record IDs with no
+  aliases to join on. It also has the lowest merge priority, so it defers to
+  the other three on every overlap and nothing it says ever decides an answer
+
+  The `deb` and `rpm` packages it declines are already answered by OSV, in the
+  default fan-out, with severities and fixed versions
+
+- `docs/evaluations/vulnerablecode.md` was removed along with it. The
+  measurements it recorded are in this entry and in `vulnq/sources.py`, next to
+  the declaration they justify
+
+### Fixed
+- A typo in `VULNQ_DISABLED_SOURCES` now prints the valid sources and exits 2,
+  the way the same typo in `--disable-source` already did (#61). It was parsed
+  in `VulnerabilityQuery.load_config()`, outside the handler the flag is
+  wrapped in, so it escaped as a traceback and exit 1 — the same mistake
+  failing two different ways depending on how it was made
+- `vulnq.__version__` said 1.5.0 in the 1.5.1 release. The two declared
+  versions are now checked against each other, so an installed copy cannot
+  misreport itself again
 
 ## [1.5.1] - 2026-09-01
 
