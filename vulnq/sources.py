@@ -109,10 +109,8 @@ REGISTRY: Tuple[SourceSpec, ...] = (
         # are answered by OSV today, in the default fan-out. It defers to all
         # three on every overlap anyway, so nothing it says ever decides.
         removed_in="2.0",
-        deprecation_note=(
-            "its ecosystems are covered by osv, github and nvd, which vulnq "
-            "queries by default"
-        ),
+        deprecation_note="its ecosystems are covered by osv, github and nvd, "
+        "which vulnq queries by default",
     ),
 )
 
@@ -142,7 +140,8 @@ def deprecation_warning(source: VulnerabilitySource) -> Optional[str]:
     if spec is None or not spec.removed_in:
         return None
 
-    warning = f"the {spec.source.value} source is deprecated and will be removed in {spec.removed_in}"
+    name = spec.source.value
+    warning = f"the {name} source is deprecated and will be removed in {spec.removed_in}"
     if spec.deprecation_note:
         warning = f"{warning} - {spec.deprecation_note}"
     return warning
