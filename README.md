@@ -94,6 +94,8 @@ Queried per lookup, in parallel, then de-duplicated:
   pages at a hundred, so a package with many hundreds of advisories needs more
   requests than the anonymous budget allows and will report throttling rather
   than a partial answer
+  ([whether to keep this source at all is
+  evaluated](docs/evaluations/vulnerablecode.md))
 
 Joined from published snapshots rather than queried (see
 [Exploitability Enrichment](#exploitability-enrichment)):

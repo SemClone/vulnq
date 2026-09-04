@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- `docs/evaluations/vulnerablecode.md` — whether to keep, fix or remove the
+  VulnerableCode source (#53). The recommendation is to remove it, after one
+  deprecation release. Removal was carried out on a scratch tree to price it:
+  three paths deleted, 328 lines across twelve files, suite 539 → 471 and
+  green. Against fifteen packages in eight ecosystems it returned 122 findings
+  where OSV, GitHub and NVD together returned 152, and of the 36 it returned
+  that they did not, 11 are false positives caused by reading a fixed version
+  without an introduced one. The `deb` and `rpm` gap that opened the issue is
+  already answered by OSV, which vulnq queries by default. No behaviour changes
+
 ## [1.5.1] - 2026-09-01
 
 ### Fixed
