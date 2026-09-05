@@ -294,7 +294,25 @@ class OSVClient(BaseClient):
             return None
 
         # Get aliases (CVE, GHSA, etc.)
-        aliases = data.get("aliases", [])
+        aliases = list(data.get("aliases") or [])
+
+        # A distro republishes an upstream advisory under its own id, and OSV
+        # records that in `upstream` rather than `aliases`. ALPINE-CVE-2022-4304
+        # and DEBIAN-CVE-2019-5481 both arrive with an empty alias list and the
+        # CVE one field over, so they join nothing: deduplication groups on the
+        # first CVE alias, and KEV and EPSS are keyed by CVE.
+        #
+        # Only an upstream id this record's own id is built from is folded in.
+        # That is the one relationship that means "the same vulnerability,
+        # renamed", and it never matches twice, so it cannot merge two
+        # advisories into one. Measured across the live API: every Alpine record
+        # (246 of 246) and the 121 of 139 Debian records that are not
+        # aggregates. `upstream` otherwise says what an advisory was derived
+        # from, which is a weaker claim - one Debian record cites thirty CVEs -
+        # and those are left where they are.
+        for upstream in data.get("upstream") or []:
+            if upstream and vuln_id.endswith(f"-{upstream}") and upstream not in aliases:
+                aliases.append(upstream)
 
         # Parse severity
         severity = Severity.UNKNOWN

@@ -38,6 +38,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OSV to fall back to, so an empty answer there is a gap in the question, not a
   clean package
 
+- A distro advisory now carries the CVE it republishes, so it joins the other
+  sources instead of standing alone. OSV records that relationship in
+  `upstream`, not `aliases`, so `ALPINE-CVE-2022-4304` and
+  `DEBIAN-CVE-2019-5481` both arrived with an empty alias list and never
+  grouped with NVD or GitHub on the CVE — and KEV and EPSS, which are keyed by
+  CVE, never reached them at all
+
+  Only an upstream id the record's own id is built from is folded in, which is
+  the one relationship that means "the same vulnerability, renamed". It never
+  matches twice, so it cannot merge two advisories into one. Measured against
+  the live API: every Alpine record (246 of 246 across six packages) and the
+  121 of 139 Debian records that are not aggregates. The rest are left alone —
+  `upstream` otherwise says what an advisory was derived from, and one Debian
+  record cites thirty CVEs
+
+  Debian findings therefore merge with NVD and GitHub now where they did not
+  before, and pick up exploitability enrichment. `rpm` is unaffected; its
+  record ids are not built from the CVE
+
 - An Alpine answer now reports the fix for the package and branch that was
   asked about. One OSV record covers every package and branch an advisory
   touches — `ALPINE-CVE-2022-4304` carries thirteen, `openssl` across eleven

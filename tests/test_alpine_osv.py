@@ -304,3 +304,96 @@ class TestScopingOnlyAppliesWhereTheQueryNamedOne:
         )
 
         assert vulns[0].fixed_versions == []
+
+
+class TestTheCveTheAdvisoryIsJoinedOnSurvives:
+    """Alpine records carry their CVE in `upstream`, not `aliases`.
+
+    Without it an Alpine finding joins nothing: deduplication groups on the
+    first CVE alias, and KEV and EPSS are keyed by CVE. Measured live, every
+    Alpine record is exactly one upstream CVE and names itself after it -
+    246 of 246 across six packages.
+    """
+
+    def _first(self):
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            recorded("alpine_openssl_v3_16"),
+        )
+        return vulns
+
+    def test_the_upstream_cve_becomes_an_alias(self):
+        vuln = next(v for v in self._first() if v.id == "ALPINE-CVE-2022-4304")
+
+        assert vuln.aliases == ["CVE-2022-4304"]
+
+    def test_every_recorded_alpine_record_carries_its_cve(self):
+        for vuln in self._first():
+            assert vuln.aliases == [vuln.id.removeprefix("ALPINE-")]
+
+    def test_enrichment_can_now_key_on_it(self):
+        from vulnq.enrichment.snapshot import cve_keys
+
+        vuln = next(v for v in self._first() if v.id == "ALPINE-CVE-2022-4304")
+
+        assert cve_keys(vuln) == ["CVE-2022-4304"]
+
+
+class TestOnlyARenameIsFoldedIn:
+    def _aliases(self, record):
+        _, vulns, _ = run("pkg:npm/example@1.0.0", {"vulns": [record]})
+        return vulns[0].aliases
+
+    def test_a_debian_record_named_after_its_cve_is_folded_too(self):
+        """Same shape, same defect; it was never Alpine-specific."""
+        assert self._aliases(
+            {"id": "DEBIAN-CVE-2019-5481", "upstream": ["CVE-2019-5481"]}
+        ) == ["CVE-2019-5481"]
+
+    def test_an_aggregate_record_folds_nothing(self):
+        """One Debian record cites thirty CVEs. It is not thirty renames."""
+        assert (
+            self._aliases(
+                {
+                    "id": "DSA-1234-1",
+                    "upstream": ["CVE-2019-5481", "CVE-2019-5482", "CVE-2020-8169"],
+                }
+            )
+            == []
+        )
+
+    def test_upstream_never_matches_twice_so_it_cannot_merge_two_advisories(self):
+        record = {
+            "id": "DEBIAN-CVE-2019-5481",
+            "upstream": ["CVE-2019-5481", "CVE-2019-5482"],
+        }
+
+        assert self._aliases(record) == ["CVE-2019-5481"]
+
+    def test_a_real_alias_list_is_kept_and_not_replaced(self):
+        assert self._aliases(
+            {
+                "id": "ALPINE-CVE-2022-4304",
+                "aliases": ["GHSA-xxxx-yyyy-zzzz"],
+                "upstream": ["CVE-2022-4304"],
+            }
+        ) == ["GHSA-xxxx-yyyy-zzzz", "CVE-2022-4304"]
+
+    def test_an_id_already_in_aliases_is_not_added_twice(self):
+        assert self._aliases(
+            {
+                "id": "ALPINE-CVE-2022-4304",
+                "aliases": ["CVE-2022-4304"],
+                "upstream": ["CVE-2022-4304"],
+            }
+        ) == ["CVE-2022-4304"]
+
+    def test_a_record_with_no_upstream_is_unchanged(self):
+        assert self._aliases({"id": "GHSA-1", "aliases": ["CVE-2020-1"]}) == ["CVE-2020-1"]
+
+    def test_the_source_record_is_not_mutated(self):
+        """aliases used to be handed out by reference straight from the payload."""
+        record = {"id": "ALPINE-CVE-2022-4304", "upstream": ["CVE-2022-4304"]}
+        self._aliases(record)
+
+        assert "aliases" not in record
