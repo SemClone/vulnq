@@ -135,6 +135,18 @@ Incomplete answers:
 That is the safe direction — under-reporting, not a false clean bill — but only
 if you can see it happened.
 
+The same rule covers a question a source cannot answer as asked:
+
+```console
+$ vulnq pkg:apk/alpine/openssl@1.1.1q-r0
+Found 0 vulnerabilities: 0 critical, 0 high
+
+Incomplete answers:
+  • osv: no Alpine release named in a distro= qualifier on
+    pkg:apk/alpine/openssl@1.1.1q-r0; OSV keys its Alpine advisories by
+    release, so none were checked
+```
+
 ### Version matching
 
 Sources disagree about who filters by version. OSV and NVD do it server-side.
@@ -172,6 +184,16 @@ carrying build metadata, a range grammar outside GitHub's — falls through to
 - `pkg:cargo/package@version`
 - `pkg:nuget/package@version`
 - `pkg:golang/module@version`
+- `pkg:deb/debian/package@version`
+- `pkg:rpm/redhat/package@version`
+- `pkg:apk/alpine/package@version?distro=alpine-3.16`
+
+Alpine is the one that needs a qualifier. OSV keys its Alpine advisories by
+release branch, so `pkg:apk/alpine/openssl@1.1.1q-r0` on its own has no branch
+to look under and comes back empty, with a warning saying why. Add
+`distro=` and it resolves — `alpine-3.16.2`, `3.16.2` and `v3.16` all read as
+the same branch, so whatever your SBOM tool writes will do. `pkg:apk/wolfi`
+and `pkg:apk/chainguard` need nothing.
 
 ### CPE (Common Platform Enumeration)
 - `cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*`

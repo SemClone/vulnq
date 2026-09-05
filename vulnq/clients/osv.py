@@ -3,6 +3,8 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from packageurl import PackageURL
+
 from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from ..versions import sort_versions
@@ -12,6 +14,27 @@ from .base import BaseClient, UnsupportedQueryError
 # hands back a token for the rest; ignoring it reported 3000 of an unknown
 # larger total as if that were the whole answer.
 MAX_PAGES = 10
+
+
+# OSV keys its Alpine advisories by release branch - the ecosystem is
+# "Alpine:v3.16", never a bare "Alpine" - and its PURL index does not reach
+# pkg:apk at all. An apk coordinate therefore comes back as {} rather than an
+# error, which is indistinguishable from a package with nothing against it:
+#
+#     pkg:apk/alpine/openssl@1.1.1q-r0                    0 records
+#     name=openssl, ecosystem=Alpine:v3.16, version=...   9 records
+#
+# Asking by name and ecosystem is the only way to see that data. Only Alpine
+# needs it: pkg:apk/wolfi and pkg:apk/chainguard resolve through the PURL index
+# today, and their advisories sit under a bare "Wolfi" and "Chainguard" with no
+# branch to name, so they must keep going out as PURLs.
+_ALPINE_NAMESPACE = "alpine"
+
+# The branch lives in the distro qualifier, which tools spell differently:
+# syft writes "alpine-3.16.2", trivy "3.16.2", others "v3.16". OSV names a
+# branch with two components and no more - "Alpine:v3.16.2" matches nothing -
+# so a third is read and dropped.
+_ALPINE_BRANCH = re.compile(r"(\d+)\.(\d+)")
 
 
 # OSV writes a 3.x or 4.0 vector with its CVSS: prefix. The schema also allows
@@ -62,8 +85,11 @@ class OSVClient(BaseClient):
         vulns: List[Dict[str, Any]] = []
         page_token: Optional[str] = None
 
+        # Alpine is asked by name and branch; everything else by PURL.
+        query = self._alpine_query(purl) or {"package": {"purl": purl}}
+
         for _ in range(MAX_PAGES):
-            data: Dict[str, Any] = {"package": {"purl": purl}}
+            data: Dict[str, Any] = dict(query)
             if page_token:
                 data["page_token"] = page_token
 
@@ -85,6 +111,47 @@ class OSVClient(BaseClient):
             )
 
         return self._parse_vulns(vulns, self._queried_version(purl), self._ecosystem_of(purl))
+
+    def _alpine_query(self, purl: str) -> Optional[Dict[str, Any]]:
+        """Return an Alpine name-and-branch query body for an apk PURL.
+
+        Args:
+            purl: Package URL string, of any type
+
+        Returns:
+            A request body naming the package and its Alpine branch, or None
+            for anything that should go out as a PURL instead
+        """
+        try:
+            parsed = PackageURL.from_string(purl)
+        except Exception:
+            return None
+
+        if parsed.type != "apk" or (parsed.namespace or "").lower() != _ALPINE_NAMESPACE:
+            return None
+
+        branch = _ALPINE_BRANCH.search((parsed.qualifiers or {}).get("distro") or "")
+        if not branch:
+            # There is no branch to ask about, so the PURL query runs and comes
+            # back empty. Saying why keeps that apart from a clean package.
+            self.parse_warnings.append(
+                f"no Alpine release named in a distro= qualifier on {purl}; OSV keys its "
+                "Alpine advisories by release, so none were checked"
+            )
+            return None
+
+        query: Dict[str, Any] = {
+            "package": {
+                "name": parsed.name,
+                "ecosystem": f"Alpine:v{branch.group(1)}.{branch.group(2)}",
+            }
+        }
+        # A versionless PURL asks for every advisory against the package, and
+        # OSV filters by version only when the query carries one.
+        if parsed.version:
+            query["version"] = parsed.version
+
+        return query
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.

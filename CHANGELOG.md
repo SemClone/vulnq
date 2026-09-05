@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-04
+
+### Fixed
+- Alpine `apk` packages are now answered by OSV instead of coming back empty
+  (#63). OSV's PURL index does not reach `pkg:apk`, so `pkg:apk/alpine/openssl@
+  1.1.1q-r0` returned nothing — not an error, and indistinguishable from a
+  package with nothing against it. The advisories were there the whole time,
+  keyed by release branch and reachable only by name and ecosystem:
+
+  ```console
+  $ curl -s https://api.osv.dev/v1/query \
+      -d '{"package":{"purl":"pkg:apk/alpine/openssl@1.1.1q-r0"}}'
+  {}
+
+  $ curl -s https://api.osv.dev/v1/query \
+      -d '{"version":"1.1.1q-r0","package":{"name":"openssl","ecosystem":"Alpine:v3.16"}}'
+  ALPINE-CVE-2022-4304, ALPINE-CVE-2022-4450, ... (9)
+  ```
+
+  An `apk` PURL under the `alpine` namespace now goes out as a name and branch
+  query, with the branch read from the `distro=` qualifier. The spelling tools
+  use varies — syft writes `alpine-3.16.2`, trivy `3.16.2` — and all of them
+  land on `Alpine:v3.16`, because OSV names a branch with two components and
+  `Alpine:v3.16.2` matches nothing. Version filtering stays with OSV, so a
+  patched `openssl@1.1.1w-r1` still comes back clean
+
+- An Alpine PURL carrying no `distro=` qualifier now says so in `warnings`
+  rather than returning a silent zero. There is no branchless Alpine data at
+  OSV to fall back to, so an empty answer there is a gap in the question, not a
+  clean package
+
+  `pkg:apk/wolfi` and `pkg:apk/chainguard` are unchanged: both resolve through
+  OSV's PURL index today, and their advisories sit under a bare `Wolfi` and
+  `Chainguard` with no branch to name. Passing `distro=` on a `deb` PURL is
+  also still avoided — it narrows OSV's answer rather than sharpening it, with
+  `curl@7.64.0-4?distro=buster` returning 9 where the bare coordinate returns
+  139
+
 ## [1.6.0] - 2026-09-04
 
 ### Deprecated
