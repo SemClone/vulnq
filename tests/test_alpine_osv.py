@@ -76,6 +76,16 @@ class TestAlpineGoesOutByBranch:
         assert "version" not in body
         assert body["package"] == {"name": "openssl", "ecosystem": "Alpine:v3.16"}
 
+    def test_the_version_zero_is_sent_rather_than_read_as_absent(self):
+        """A PURL version is a string, so "0" is not the falsy 0.
+
+        Dropping it would ask OSV a package-wide question while the result
+        still claimed SOURCE_FILTERED against a version nobody filtered on.
+        """
+        body, _, _ = run("pkg:apk/alpine/openssl@0?distro=alpine-3.16")
+
+        assert body["version"] == "0"
+
     def test_arch_and_other_qualifiers_do_not_confuse_the_branch(self):
         purl = "pkg:apk/alpine/openssl@1.1.1q-r0?arch=x86_64&distro=alpine-3.16.2&upstream=openssl"
         body, _, _ = run(purl)
@@ -328,8 +338,9 @@ class TestTheCveTheAdvisoryIsJoinedOnSurvives:
         assert vuln.aliases == ["CVE-2022-4304"]
 
     def test_every_recorded_alpine_record_carries_its_cve(self):
+        # Sliced, not removeprefix: the suite runs on 3.8, where that is absent.
         for vuln in self._first():
-            assert vuln.aliases == [vuln.id.removeprefix("ALPINE-")]
+            assert vuln.aliases == [vuln.id[len("ALPINE-") :]]
 
     def test_enrichment_can_now_key_on_it(self):
         from vulnq.enrichment.snapshot import cve_keys
