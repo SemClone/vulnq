@@ -120,10 +120,9 @@ def test_github_is_asked_the_name_as_published(monkeypatch):
 def test_no_client_normalizes_before_querying(monkeypatch):
     """No client may apply the PEP 503 rule before querying.
 
-    Covers all four clients where a behavioural test cannot: NVD's purl-to-CPE
+    Covers every client where a behavioural test cannot: NVD's purl-to-CPE
     table has no pypi row carrying a foldable separator, so the mutation is
-    unobservable there, and VulnerableCode's public API refuses
-    unauthenticated queries, which is how vulnq calls it.
+    unobservable there.
     A client reaching for canonical_purl is making the transport carry an
     identity rule, which is the defect whether or not a test can observe it.
 
@@ -196,8 +195,8 @@ def test_underscores_are_folded_only_on_the_github_path():
 
     The GitHub client builds its package name from PackageURL.name, which
     packageurl has already folded, so GitHub is asked about scikit-learn. OSV
-    and VulnerableCode pass the purl string straight through, so they do see
-    the underscore. That asymmetry is identical on main.
+    passes the purl string straight through, so it does see the underscore.
+    That asymmetry is identical on main.
 
     Left alone deliberately: for GitHub the fold is what GHSA wants anyway.
     scikit-learn is the PyPI project name, scikit_learn only a wheel filename

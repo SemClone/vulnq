@@ -9,7 +9,7 @@ closed one. CI only runs 3.13, where the binding is gone, so nothing caught it.
 
 import asyncio
 
-from vulnq.clients import GitHubClient, NVDClient, OSVClient, VulnerableCodeClient
+from vulnq.clients import GitHubClient, NVDClient, OSVClient
 from vulnq.core import VulnerabilityQuery
 from vulnq.models import Configuration, VulnerabilitySource
 
@@ -22,7 +22,7 @@ def test_clients_construct_with_no_current_event_loop():
 
     asyncio.run(nothing())
 
-    for client_class in (OSVClient, GitHubClient, NVDClient, VulnerableCodeClient):
+    for client_class in (OSVClient, GitHubClient, NVDClient):
         client_class()
 
 

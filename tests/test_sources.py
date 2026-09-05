@@ -19,12 +19,11 @@ class TestSourceEnum:
             "osv",
             "github",
             "nvd",
-            "vulnerablecode",
         }
 
-    @pytest.mark.parametrize("removed", ["snyk", "sonatype"])
+    @pytest.mark.parametrize("removed", ["snyk", "sonatype", "vulnerablecode"])
     def test_removed_stubs_fail_loudly(self, removed):
-        """Naming a removed stub fails at construction, not silently at runtime."""
+        """Naming a removed source fails at construction, not silently later."""
         with pytest.raises(ValueError):
             VulnerabilitySource(removed)
 
@@ -55,25 +54,21 @@ class TestNoSourcesConfigured:
         for source in SELECTABLE_SOURCES:
             assert source.value in message
 
-    def test_vulnerablecode_is_selectable_like_any_other_source(self):
-        """It used to replace the fan-out, so naming it here built nothing.
+    def test_every_source_is_selectable_alone_or_together(self):
+        """One source used to replace the fan-out, so naming it built nothing.
 
-        Selecting it now builds its client, and it can be combined with the
-        others rather than displacing them.
+        Selecting any of them now builds that client, and they combine rather
+        than displace each other.
         """
-        engine = VulnerabilityQuery(
-            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
-        )
-        assert VulnerabilitySource.VULNERABLECODE in engine._clients
+        engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.NVD]))
+        assert set(engine._clients) == {VulnerabilitySource.NVD}
 
         both = VulnerabilityQuery(
-            config=Configuration(
-                sources=[VulnerabilitySource.OSV, VulnerabilitySource.VULNERABLECODE]
-            )
+            config=Configuration(sources=[VulnerabilitySource.OSV, VulnerabilitySource.NVD])
         )
         assert set(both._clients) == {
             VulnerabilitySource.OSV,
-            VulnerabilitySource.VULNERABLECODE,
+            VulnerabilitySource.NVD,
         }
 
     def test_every_source_disabled_is_a_configuration_error(self):
@@ -116,24 +111,19 @@ class TestUnsupportedIdentifier:
         assert result.sources_checked == []
         assert any("no lookup was performed" in error for error in result.errors)
 
-    def test_vulnerablecode_path_reports_unsupported_identifier(self, monkeypatch):
-        """The VulnerableCode path claimed the source was checked when it was not."""
-        engine = VulnerabilityQuery(
-            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
-        )
+    def test_a_single_source_path_reports_unsupported_identifier(self, monkeypatch):
+        """A single-source path once claimed the source was checked when it
+        was not."""
+        engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.NVD]))
 
         async def no_session(self):
             return None
 
         monkeypatch.setattr(
-            "vulnq.clients.vulnerablecode.VulnerableCodeClient.start_session",
-            no_session,
-            raising=False,
+            "vulnq.clients.nvd.NVDClient.start_session", no_session, raising=False
         )
         monkeypatch.setattr(
-            "vulnq.clients.vulnerablecode.VulnerableCodeClient.close_session",
-            no_session,
-            raising=False,
+            "vulnq.clients.nvd.NVDClient.close_session", no_session, raising=False
         )
 
         result = engine.query("sha256:" + "a" * 64)
@@ -170,8 +160,8 @@ class TestCLISourceHandling:
         assert result.exit_code == 2
         assert "bogus" in result.output
 
-    def test_vulnerablecode_source_selects_vulnerablecode(self, monkeypatch):
-        """Naming it must select it, not resolve to zero sources."""
+    def test_naming_one_source_selects_exactly_it(self, monkeypatch):
+        """Naming a source must select it, not resolve to zero sources."""
         captured = {}
 
         def fake_init(self, config=None, verbose=False):
@@ -179,16 +169,13 @@ class TestCLISourceHandling:
             raise SystemExit(0)
 
         monkeypatch.setattr("vulnq.cli.VulnerabilityQuery.__init__", fake_init)
-        CliRunner().invoke(main, ["pkg:npm/express@4.17.1", "--sources", "vulnerablecode"])
+        CliRunner().invoke(main, ["pkg:npm/express@4.17.1", "--sources", "nvd"])
 
-        assert captured["config"].sources == [VulnerabilitySource.VULNERABLECODE]
+        assert captured["config"].sources == [VulnerabilitySource.NVD]
 
-    def test_vulnerablecode_can_now_be_combined_with_the_others(self, monkeypatch):
-        """It used to replace them: naming both left only the fan-out ones.
-
-        As an ordinary source it joins them, which is a combination the tool
-        could not express before.
-        """
+    def test_naming_two_sources_selects_both(self, monkeypatch):
+        """One source used to replace the others: naming both left only the
+        fan-out ones. Nothing does that now."""
         captured = {}
 
         def fake_init(self, config=None, verbose=False):
@@ -198,10 +185,10 @@ class TestCLISourceHandling:
         monkeypatch.setattr("vulnq.cli.VulnerabilityQuery.__init__", fake_init)
         CliRunner().invoke(
             main,
-            ["pkg:npm/express@4.17.1", "--sources", "osv", "--sources", "vulnerablecode"],
+            ["pkg:npm/express@4.17.1", "--sources", "osv", "--sources", "nvd"],
         )
 
         assert captured["config"].sources == [
             VulnerabilitySource.OSV,
-            VulnerabilitySource.VULNERABLECODE,
+            VulnerabilitySource.NVD,
         ]

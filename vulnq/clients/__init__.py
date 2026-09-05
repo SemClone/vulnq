@@ -9,7 +9,6 @@ from .base import (
 from .github import GitHubClient
 from .nvd import NVDClient
 from .osv import OSVClient
-from .vulnerablecode import VulnerableCodeClient
 
 __all__ = [
     "BaseClient",
@@ -19,5 +18,4 @@ __all__ = [
     "OSVClient",
     "GitHubClient",
     "NVDClient",
-    "VulnerableCodeClient",
 ]

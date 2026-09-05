@@ -149,8 +149,8 @@ def test_coerce_score_takes_whatever_a_source_sends(raw, expected):
     """Sources disagree about the type, and one bad value used to take the lot.
 
     NVD and GitHub send a JSON number that arrives as int or float depending on
-    whether it has a fraction, OSV sends a string, VulnerableCode sends either.
-    A string reaching cvss_to_severity raised TypeError, which is not caught
+    whether it has a fraction, and OSV sends a string. A string reaching
+    cvss_to_severity raised TypeError, which is not caught
     per advisory, so a single odd record failed the whole source.
     """
     from vulnq.cvss import coerce_score

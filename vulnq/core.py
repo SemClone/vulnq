@@ -27,6 +27,7 @@ from .sources import (
     SELECTABLE_SOURCES,
     parse_disabled,
     warn_about_deprecated,
+    warn_about_retired,
 )
 from .utils import detect_identifier_type, parse_identifier
 from .versions import sort_versions
@@ -112,16 +113,13 @@ class VulnerabilityQuery:
         # Load API keys from environment
         config.github_token = os.environ.get("GITHUB_TOKEN")
         config.nvd_api_key = os.environ.get("NVD_API_KEY")
-        # Documented in the README, so they have to be read here or the README
-        # is describing knobs that do not exist. Anonymous access works; the
-        # token only raises the ten-a-minute limit.
-        config.vulnerablecode_api_key = os.environ.get("VULNERABLECODE_API_KEY") or None
-        config.vulnerablecode_url = os.environ.get("VULNERABLECODE_URL") or None
-
-        # Kept for callers that already set it. It always meant "query only
-        # VulnerableCode", which is now just a selection like any other.
+        # USE_VULNERABLECODE selected a source that no longer exists. It is
+        # read here only so it can say so: os.environ.get would otherwise skip
+        # it in silence, and a job that believes it is querying one thing would
+        # quietly query another. That silence is the whole reason the source got
+        # a deprecation release before this one.
         if os.environ.get("USE_VULNERABLECODE", "").lower() == "true":
-            config.sources = [VulnerabilitySource.VULNERABLECODE]
+            warn_about_retired(["vulnerablecode"])
 
         # An operator switches a source off here when its terms change, its
         # API is withdrawn, or it starts refusing them. A code change should
@@ -254,9 +252,9 @@ class VulnerabilityQuery:
         # keys GHSA by the as-published PyPI name and folds case but not dots,
         # so asking it for plone-namedfile instead of plone.namedfile returns a
         # confident zero. package_info carries the canonical name for identity.
-        # One path for every source. VulnerableCode used to take its own,
-        # duplicating this logic and drifting from it, which is how findings
-        # from it were labelled as coming from OSV.
+        # One path for every source. A source that took its own duplicated this
+        # logic and drifted from it, which is how findings from one were once
+        # labelled as coming from another.
         vulnerabilities = await self._query_all_sources(identifier, id_type, package_info, result)
         result.vulnerabilities = self._deduplicate_vulnerabilities(
             vulnerabilities, package_info.ecosystem if package_info else None
@@ -272,7 +270,7 @@ class VulnerabilityQuery:
                 vuln.modified_date = _as_utc(vuln.modified_date)
 
         # Enrich after both branches converge, so a CVE found by three sources
-        # is stamped once and the VulnerableCode-only path is not skipped.
+        # is stamped once and no single-source path is skipped.
         if self._enricher:
             result = self._enricher.enrich(result)
 

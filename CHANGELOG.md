@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-05
+
+### Removed
+- The `vulnerablecode` source, deprecated in 1.6.0 (#63). The client, its
+  tests and its recorded fixtures are gone, along with `--use-vulnerablecode`,
+  `--vulnerablecode-api-key`, `--vulnerablecode-url`, and the
+  `VULNERABLECODE_API_KEY` and `VULNERABLECODE_URL` environment variables
+
+  It goes because it was measurably the weakest source in the registry, not
+  because it was awkward to maintain. Across fifteen packages in eight
+  ecosystems it returned 122 findings where OSV, GitHub and NVD together
+  returned 152, and missed 66 those three carry. Of the 36 it returned that
+  they did not, 11 were false positives it produced by reading a fixed version
+  without an introduced one, and 5 were duplicates under record IDs with no
+  aliases to join on. It also held the lowest merge priority, so it deferred to
+  the other three on every overlap and nothing it said ever decided an answer
+
+  The `deb` and `rpm` packages it declined are answered by OSV in the default
+  fan-out, and 1.7.0 closed the Alpine gap that was the one thing this removal
+  would otherwise have cost
+
+### Migration
+- `--sources vulnerablecode` now exits 2 and lists the sources that remain, as
+  any unknown name does
+- `--use-vulnerablecode` exits 2 naming the option. A flag cannot be quietly
+  ignored the way an environment variable can, so the script that passes it
+  stops rather than querying something its author did not choose
+- `USE_VULNERABLECODE=true` is read one last time, only so it can say it is
+  being ignored, and the query runs against the default fan-out. It was read
+  with `os.environ.get`, so dropping it outright would have skipped it in
+  silence and left a job querying something other than what it asked for. That
+  silence is the reason the source got a deprecation release before this one
+- `VULNQ_DISABLED_SOURCES=vulnerablecode` and `--disable-source vulnerablecode`
+  are accepted as no-ops for one release, with the same notice. Whoever wrote
+  that is asking for something already true, and failing them for being right
+  is a worse answer than doing nothing. A typo like `gitub` still exits 2
+
+  Both notices go to stderr, so `--format json` on stdout stays a document
+
+### Changed
+- `SourceSpec.removed_in` and `deprecation_note` stay. They are how the next
+  source gets deprecated, and the machinery should outlive its first user.
+  Nothing currently declares them
+
 ## [1.7.0] - 2026-09-04
 
 ### Fixed

@@ -301,22 +301,7 @@ def print_markdown(result: QueryResult):
 @click.option(
     "--sources",
     multiple=True,
-    help="Sources to query: osv, github, nvd, vulnerablecode. Repeatable.",
-)
-@click.option(
-    "--use-vulnerablecode",
-    is_flag=True,
-    help="Query only VulnerableCode (alias for --sources vulnerablecode)",
-)
-@click.option(
-    "--vulnerablecode-api-key",
-    envvar="VULNERABLECODE_API_KEY",
-    help="VulnerableCode API token, which raises its rate limit",
-)
-@click.option(
-    "--vulnerablecode-url",
-    envvar="VULNERABLECODE_URL",
-    help="VulnerableCode API root, for a self-hosted instance",
+    help="Sources to query: osv, github, nvd. Repeatable.",
 )
 @click.option(
     "--disable-source",
@@ -354,9 +339,6 @@ def main(
     min_severity: Optional[str],
     show_fixes: bool,
     sources: tuple,
-    use_vulnerablecode: bool,
-    vulnerablecode_api_key: Optional[str],
-    vulnerablecode_url: Optional[str],
     disable_source: tuple,
     kev_snapshot: Optional[str],
     epss_snapshot: Optional[str],
@@ -433,11 +415,6 @@ def main(
     except UnknownSourceError as e:
         console.print(f"[red]{e}[/red]")
         sys.exit(2)
-    if vulnerablecode_api_key:
-        config.vulnerablecode_api_key = vulnerablecode_api_key
-    if vulnerablecode_url:
-        config.vulnerablecode_url = vulnerablecode_url
-
     if disable_source:
         try:
             config.disabled_sources = list(parse_disabled(",".join(disable_source)))
@@ -462,15 +439,7 @@ def main(
                 sys.exit(2)
 
         if parsed:
-            # VulnerableCode is an ordinary source now, so naming it here joins
-            # it to the others rather than replacing them.
             config.sources = parsed
-
-    # Applied after --sources on purpose. On the previous release the
-    # VulnerableCode switch won over any selection, and someone with it baked
-    # into a job should not quietly start querying something else.
-    if use_vulnerablecode:
-        config.sources = [VulnerabilitySource.VULNERABLECODE]
 
     # Initialize query engine
     try:

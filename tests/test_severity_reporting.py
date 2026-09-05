@@ -2,7 +2,7 @@
 
 Three separate defects lived here: an unrated finding was filtered out as if
 it were harmless, a score was invented from a partial reading of the vector,
-and VulnerableCode findings were labelled as coming from OSV.
+and findings from one source were labelled as coming from another.
 """
 
 import asyncio
@@ -10,8 +10,9 @@ import datetime
 
 import pytest
 
+from vulnq.clients.github import GitHubClient
+from vulnq.clients.nvd import NVDClient
 from vulnq.clients.osv import OSVClient
-from vulnq.clients.vulnerablecode import VulnerableCodeClient
 from vulnq.models import (
     SEVERITY_ORDER,
     IdentifierType,
@@ -133,9 +134,17 @@ def test_the_database_label_still_rates_an_unscorable_finding():
     assert vuln.severity is Severity.HIGH
 
 
-def test_vulnerablecode_findings_say_vulnerablecode():
-    """Labelling them OSV credited a database that was never queried."""
-    assert VulnerableCodeClient().source is VulnerabilitySource.VULNERABLECODE
+@pytest.mark.parametrize(
+    "client_class,source",
+    [
+        (OSVClient, VulnerabilitySource.OSV),
+        (GitHubClient, VulnerabilitySource.GITHUB),
+        (NVDClient, VulnerabilitySource.NVD),
+    ],
+)
+def test_a_client_says_which_database_it_is(client_class, source):
+    """One reported another's name once, crediting a database never queried."""
+    assert client_class().source is source
 
 
 def test_github_unscored_advisories_do_not_become_a_zero(monkeypatch):
@@ -298,14 +307,6 @@ def test_an_odd_score_from_nvd_does_not_fail_the_source(raw):
     }
     vuln = NVDClient()._parse_vulnerability(data, None)
     assert vuln.cvss_score is None or isinstance(vuln.cvss_score, float)
-
-
-def _vc(scores):
-    from vulnq.clients.vulnerablecode import VulnerableCodeClient
-
-    return VulnerableCodeClient()._parse_vulnerability(
-        {"vulnerability_id": "VCID-1", "summary": "x", "references": [], "scores": scores}
-    )
 
 
 def test_scores_render_to_one_decimal(capsys):
