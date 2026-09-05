@@ -30,13 +30,20 @@ def recorded(name):
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
-def run(purl, response=None):
-    """Send one PURL through the client and return (request body, result)."""
+def run(purl, response=None, probe=None):
+    """Send one PURL through the client and return (first body, result, client).
+
+    An Alpine query that comes back empty asks a second, versionless question
+    to find out whether OSV holds the coordinate at all. `probe` is that second
+    answer; it defaults to empty, meaning OSV holds nothing.
+    """
     sent = []
     client = OSVClient()
 
     async def _capture(method, url, **kwargs):
         sent.append(kwargs["json"])
+        if len(sent) > 1:
+            return probe if probe is not None else {"vulns": []}
         return response if response is not None else {"vulns": []}
 
     client._make_request = _capture
@@ -63,12 +70,6 @@ class TestAlpineGoesOutByBranch:
 
         assert body["package"]["ecosystem"] == "Alpine:v3.16"
 
-    def test_a_third_component_is_dropped_rather_than_sent(self):
-        """"Alpine:v3.16.2" matches nothing. Verified against the live API."""
-        body, _, _ = run("pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16.2")
-
-        assert body["package"]["ecosystem"] == "Alpine:v3.16"
-
     def test_a_versionless_purl_asks_for_the_whole_package(self):
         """OSV filters by version only when the query carries one."""
         body, _, _ = run("pkg:apk/alpine/openssl?distro=alpine-3.16")
@@ -87,7 +88,7 @@ class TestAlpineGoesOutByBranch:
         assert body["version"] == "0"
 
     def test_arch_and_other_qualifiers_do_not_confuse_the_branch(self):
-        purl = "pkg:apk/alpine/openssl@1.1.1q-r0?arch=x86_64&distro=alpine-3.16.2&upstream=openssl"
+        purl = "pkg:apk/alpine/openssl@1.1.1q-r0?arch=x86_64&distro=alpine-3.16.2&replaces=libssl"
         body, _, _ = run(purl)
 
         assert body["package"]["ecosystem"] == "Alpine:v3.16"
@@ -104,15 +105,15 @@ class TestTheRecordedAnswerParses:
         assert client.parse_warnings == []
 
     def test_the_alpine_ids_and_their_cve_aliases_both_survive(self):
-        """ALPINE-CVE-* ids are what joins these to the other sources."""
+        """The id is Alpine's; the alias is what joins it to everything else."""
         _, vulns, _ = run(
             "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16.2",
             recorded("alpine_openssl_v3_16"),
         )
 
-        ids = {v.id for v in vulns}
-        assert "ALPINE-CVE-2022-4304" in ids
-        assert all(i.startswith("ALPINE-CVE-") for i in ids)
+        pairs = {(v.id, tuple(v.aliases)) for v in vulns}
+        assert ("ALPINE-CVE-2022-4304", ("CVE-2022-4304",)) in pairs
+        assert all(i.startswith("ALPINE-CVE-") and a for i, a in pairs)
 
 
 class TestEverythingElseStillGoesOutAsAPurl:
@@ -167,7 +168,10 @@ class TestAnAlpinePurlWithNoBranchSaysSo:
         assert "distro=" in client.parse_warnings[0]
 
     def test_a_branch_that_does_resolve_warns_about_nothing(self):
-        _, _, client = run("pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16")
+        _, _, client = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            {"vulns": [{"id": "ALPINE-CVE-1"}]},
+        )
 
         assert client.parse_warnings == []
 
@@ -408,3 +412,214 @@ class TestOnlyARenameIsFoldedIn:
         self._aliases(record)
 
         assert "aliases" not in record
+
+
+class TestASubpackageIsAskedAboutUnderTheNameOsvHolds:
+    """Alpine ships libraries as subpackages of a source package, and OSV keys
+    its advisories by the source. An SBOM names what is installed. Verified
+    live: libcrypto1.1 and libssl1.1 on Alpine:v3.16 return nothing, openssl
+    returns 28.
+    """
+
+    def test_the_upstream_qualifier_supplies_the_name(self):
+        body, _, _ = run(
+            "pkg:apk/alpine/libcrypto1.1@1.1.1q-r0?arch=x86_64"
+            "&upstream=openssl&distro=alpine-3.16.2"
+        )
+
+        assert body == {
+            "package": {"name": "openssl", "ecosystem": "Alpine:v3.16"},
+            "version": "1.1.1q-r0",
+        }
+
+    def test_the_subpackages_own_version_is_the_one_sent(self):
+        """An apk subpackage carries its origin's version, so it needs no
+        translating - only the name is wrong in the PURL."""
+        body, _, _ = run(
+            "pkg:apk/alpine/libssl1.1@1.1.1q-r0?upstream=openssl&distro=alpine-3.16"
+        )
+
+        assert body["version"] == "1.1.1q-r0"
+
+    def test_an_upstream_written_with_a_version_keeps_only_the_name(self):
+        body, _, _ = run(
+            "pkg:apk/alpine/libcrypto3@3.1.4-r5?upstream=openssl@3.1.4-r5&distro=alpine-3.19"
+        )
+
+        assert body["package"]["name"] == "openssl"
+
+    def test_no_upstream_qualifier_leaves_the_purl_name_alone(self):
+        body, _, _ = run("pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16")
+
+        assert body["package"]["name"] == "openssl"
+
+    def test_an_empty_upstream_qualifier_falls_back_to_the_purl_name(self):
+        body, _, _ = run("pkg:apk/alpine/openssl@1.1.1q-r0?upstream=&distro=alpine-3.16")
+
+        assert body["package"]["name"] == "openssl"
+
+
+class TestAnEmptyAlpineAnswerIsCheckedNotAssumed:
+    """OSV answers a coordinate it does not hold exactly as it answers a
+    patched package: with nothing. Asking again without the version tells them
+    apart, and only then can a zero be called clean.
+    """
+
+    PURL = "pkg:apk/alpine/openssl@1.1.1w-r1?distro=alpine-3.16"
+
+    def test_a_coordinate_osv_holds_reports_a_clean_package_quietly(self):
+        """openssl on Alpine:v3.16 has 28 advisories and none hit this version."""
+        _, vulns, client = run(self.PURL, {"vulns": []}, probe={"vulns": [{"id": "X"}]})
+
+        assert vulns == []
+        assert client.parse_warnings == []
+
+    def test_a_coordinate_osv_does_not_hold_says_nothing_was_checked(self):
+        _, vulns, client = run(self.PURL, {"vulns": []}, probe={"vulns": []})
+
+        assert vulns == []
+        assert len(client.parse_warnings) == 1
+        assert "no advisories at all" in client.parse_warnings[0]
+
+    def test_the_probe_asks_the_same_coordinate_without_the_version(self):
+        sent = []
+        client = OSVClient()
+
+        async def _capture(method, url, **kwargs):
+            sent.append(kwargs["json"])
+            return {"vulns": []}
+
+        client._make_request = _capture
+        asyncio.run(client.query_purl(self.PURL))
+
+        assert len(sent) == 2
+        assert sent[1] == {"package": {"name": "openssl", "ecosystem": "Alpine:v3.16"}}
+
+    def test_an_unreleased_branch_is_named_in_the_warning(self):
+        """Alpine edge reports the next release, which OSV has no data for
+        until it ships. Verified live: Alpine:v3.24 has 102, Alpine:v3.25 has
+        none, and Alpine:edge is not an ecosystem OSV uses."""
+        _, _, client = run("pkg:apk/alpine/openssl@3.5.4-r0?distro=alpine-3.25.0_alpha20260805")
+
+        assert "Alpine:v3.25" in client.parse_warnings[0]
+
+    def test_a_subpackage_with_no_upstream_qualifier_is_told_what_is_missing(self):
+        """trivy writes distro= but no upstream=, so this cannot be rescued -
+        only explained."""
+        _, _, client = run("pkg:apk/alpine/libcrypto1.1@1.1.1q-r0?distro=alpine-3.16")
+
+        assert "libcrypto1.1 on Alpine:v3.16" in client.parse_warnings[0]
+        assert "upstream=" in client.parse_warnings[0]
+
+    def test_a_versionless_query_needs_no_second_question(self):
+        """It already asked the unversioned question; nothing more to learn."""
+        sent = []
+        client = OSVClient()
+
+        async def _capture(method, url, **kwargs):
+            sent.append(kwargs["json"])
+            return {"vulns": []}
+
+        client._make_request = _capture
+        asyncio.run(client.query_purl("pkg:apk/alpine/openssl?distro=alpine-3.16"))
+
+        assert len(sent) == 1
+        assert "no advisories at all" in client.parse_warnings[0]
+
+    def test_an_answer_with_findings_never_asks_a_second_time(self):
+        _, vulns, client = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            recorded("alpine_openssl_v3_16"),
+        )
+
+        assert len(vulns) == 9
+        assert client.parse_warnings == []
+
+    def test_a_failing_probe_does_not_take_the_query_down_or_pass_for_clean(self):
+        client = OSVClient()
+        calls = []
+
+        async def _capture(method, url, **kwargs):
+            calls.append(kwargs["json"])
+            if len(calls) > 1:
+                raise RuntimeError("upstream 503")
+            return {"vulns": []}
+
+        client._make_request = _capture
+        vulns = asyncio.run(client.query_purl("pkg:apk/alpine/openssl@1.1.1w-r1?distro=3.16"))
+
+        assert vulns == []
+        assert "not a clean bill" in client.parse_warnings[0]
+
+    def test_no_other_ecosystem_asks_a_second_question(self):
+        sent = []
+        client = OSVClient()
+
+        async def _capture(method, url, **kwargs):
+            sent.append(kwargs["json"])
+            return {"vulns": []}
+
+        client._make_request = _capture
+        asyncio.run(client.query_purl("pkg:deb/debian/curl@7.64.0-4"))
+
+        assert len(sent) == 1
+        assert client.parse_warnings == []
+
+
+class TestTheUnnarrowedFallbackSaysSo:
+    def test_a_record_naming_nothing_we_asked_for_is_reported_as_unnarrowed(self):
+        record = {
+            "id": "ALPINE-CVE-2022-32221",
+            "affected": [
+                {
+                    "package": {"name": "curl", "ecosystem": "Alpine:v3.15"},
+                    "ranges": [{"events": [{"fixed": "7.80.0-r4"}]}],
+                },
+                {
+                    "package": {"name": "curl", "ecosystem": "Alpine:v3.16"},
+                    "ranges": [{"events": [{"fixed": "7.83.1-r4"}]}],
+                },
+            ],
+        }
+        _, vulns, client = run(
+            "pkg:apk/alpine/curl@7.85.0-r1?distro=alpine-3.17", {"vulns": [record]}
+        )
+
+        # The fix is kept rather than lost, but a list spanning branches can
+        # show a version below the installed one, which reads as already
+        # patched. It must not arrive unannounced.
+        assert vulns[0].fixed_versions == ["7.80.0-r4", "7.83.1-r4"]
+        assert len(client.parse_warnings) == 1
+        assert "ALPINE-CVE-2022-32221" in client.parse_warnings[0]
+
+    def test_a_narrowed_record_says_nothing(self):
+        record = {
+            "id": "ALPINE-CVE-1",
+            "affected": [
+                {
+                    "package": {"name": "curl", "ecosystem": "Alpine:v3.17"},
+                    "ranges": [{"events": [{"fixed": "7.86.0-r0"}]}],
+                }
+            ],
+        }
+        _, vulns, client = run(
+            "pkg:apk/alpine/curl@7.85.0-r1?distro=alpine-3.17", {"vulns": [record]}
+        )
+
+        assert vulns[0].fixed_versions == ["7.86.0-r0"]
+        assert client.parse_warnings == []
+
+    def test_a_purl_query_is_never_called_unnarrowed(self):
+        """There was no scope to narrow to, so there is nothing to announce."""
+        record = {
+            "id": "OSV-1",
+            "affected": [
+                {
+                    "package": {"name": "a", "ecosystem": "npm"},
+                    "ranges": [{"events": [{"fixed": "1.0.0"}]}],
+                }
+            ],
+        }
+        _, _, client = run("pkg:npm/example@1.0.0", {"vulns": [record]})
+
+        assert client.parse_warnings == []

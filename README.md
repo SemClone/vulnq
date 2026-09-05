@@ -186,14 +186,22 @@ carrying build metadata, a range grammar outside GitHub's — falls through to
 - `pkg:golang/module@version`
 - `pkg:deb/debian/package@version`
 - `pkg:rpm/redhat/package@version`
-- `pkg:apk/alpine/package@version?distro=alpine-3.16`
+- `pkg:apk/alpine/package@version?distro=alpine-3.16&upstream=origin`
 
-Alpine is the one that needs a qualifier. OSV keys its Alpine advisories by
-release branch, so `pkg:apk/alpine/openssl@1.1.1q-r0` on its own has no branch
-to look under and comes back empty, with a warning saying why. Add
-`distro=` and it resolves — `alpine-3.16.2`, `3.16.2` and `v3.16` all read as
-the same branch, so whatever your SBOM tool writes will do. `pkg:apk/wolfi`
-and `pkg:apk/chainguard` need nothing.
+Alpine is the one that needs qualifiers. OSV keys its Alpine advisories two
+ways, and a PURL missing either comes back empty:
+
+- **by release branch**, from `distro=`. `alpine-3.16.2`, `3.16.2` and `v3.16`
+  all read as the same branch, so whatever your SBOM tool writes will do.
+- **by origin package**, from `upstream=`. Alpine ships most libraries as
+  subpackages — `libcrypto1.1` and `libssl1.1` both come from `openssl` — and
+  the advisories are filed under the origin. syft writes `upstream=` when the
+  two differ.
+
+An Alpine answer with nothing in it is checked before it is reported as clean,
+so a branch that does not exist yet, or a subpackage nobody named the origin
+of, says so in `warnings` instead of reading as a clean bill.
+`pkg:apk/wolfi` and `pkg:apk/chainguard` need none of this.
 
 ### CPE (Common Platform Enumeration)
 - `cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*`

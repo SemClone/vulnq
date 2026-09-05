@@ -111,12 +111,61 @@ class OSVClient(BaseClient):
                 f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 
+        if alpine and not vulns:
+            await self._explain_empty_alpine_answer(url, alpine)
+
         return self._parse_vulns(
             vulns,
             self._queried_version(purl),
             self._ecosystem_of(purl),
             # Only the Alpine path knows both halves of what it asked for.
             scope=alpine["package"] if alpine else None,
+        )
+
+    async def _explain_empty_alpine_answer(self, url: str, query: Dict[str, Any]) -> None:
+        """Say whether an empty Alpine answer means clean or means unasked.
+
+        OSV answers a coordinate it does not hold exactly as it answers a
+        patched package: with nothing. Those are opposite facts, and the two
+        ways to get the first one are the two things this rewrite has to guess -
+        the release branch, read from a distro string that can name an
+        unreleased or misspelled one, and the origin package, which is only in
+        the PURL if the tool that wrote it bothered.
+
+        Asking the same coordinate without a version separates them. A branch
+        and name OSV holds answer with the package's whole history; one it does
+        not hold answers with nothing again.
+
+        Args:
+            url: The query endpoint
+            query: The Alpine request body that came back empty
+        """
+        package = query["package"]
+        described = f"{package['name']} on {package['ecosystem']}"
+
+        if "version" in query:
+            try:
+                response = await self._make_request("POST", url, json={"package": package})
+            except Exception:
+                # The check is advisory, but an unconfirmed empty answer must
+                # not pass for a confirmed one.
+                self.parse_warnings.append(
+                    f"nothing came back for {described}, and the follow-up that would say "
+                    "whether OSV holds that package and release at all did not answer; "
+                    "this is not a clean bill"
+                )
+                return
+
+            if response.get("vulns"):
+                # OSV holds this coordinate and had nothing to say about this
+                # version. That is a clean answer, and it is the whole point.
+                return
+
+        self.parse_warnings.append(
+            f"OSV holds no advisories at all for {described}, so nothing was actually "
+            "checked. Alpine data is keyed by release branch and by origin package: "
+            "the branch may not exist yet, and a subpackage needs an upstream= "
+            "qualifier naming the package it is built from"
         )
 
     def _alpine_query(self, purl: str) -> Optional[Dict[str, Any]]:
@@ -137,7 +186,24 @@ class OSVClient(BaseClient):
         if parsed.type != "apk" or (parsed.namespace or "").lower() != _ALPINE_NAMESPACE:
             return None
 
-        branch = _ALPINE_BRANCH.search((parsed.qualifiers or {}).get("distro") or "")
+        qualifiers = parsed.qualifiers or {}
+
+        # Alpine ships most libraries as subpackages of a source package, and
+        # OSV keys its advisories by the source, not the subpackage. An SBOM
+        # names what is installed, so the name in the PURL is usually not the
+        # name OSV holds:
+        #
+        #     libcrypto1.1, Alpine:v3.16     0 records
+        #     libssl1.1,    Alpine:v3.16     0 records
+        #     openssl,      Alpine:v3.16    28 records
+        #
+        # syft writes the origin into an upstream= qualifier when it differs,
+        # which is the only place that mapping survives into a PURL. Some tools
+        # write it as name@version; only the name is a key, and a subpackage
+        # carries its origin's version, so the version needs no translating.
+        name = (qualifiers.get("upstream") or "").split("@", 1)[0] or parsed.name
+
+        branch = _ALPINE_BRANCH.search(qualifiers.get("distro") or "")
         if not branch:
             # There is no branch to ask about, so the PURL query runs and comes
             # back empty. Saying why keeps that apart from a clean package.
@@ -149,7 +215,7 @@ class OSVClient(BaseClient):
 
         query: Dict[str, Any] = {
             "package": {
-                "name": parsed.name,
+                "name": name,
                 "ecosystem": f"Alpine:v{branch.group(1)}.{branch.group(2)}",
             }
         }
@@ -229,9 +295,8 @@ class OSVClient(BaseClient):
 
         return vulnerabilities
 
-    @staticmethod
     def _affected_in_scope(
-        data: Dict[str, Any], scope: Optional[Dict[str, str]]
+        self, data: Dict[str, Any], scope: Optional[Dict[str, str]]
     ) -> List[Dict[str, Any]]:
         """Return the affected entries the query actually asked about.
 
@@ -262,12 +327,23 @@ class OSVClient(BaseClient):
             and (entry.get("package") or {}).get("ecosystem") == scope.get("ecosystem")
         ]
 
+        if in_scope:
+            return in_scope
+
         # A record that answered the query but names the package differently in
         # its own affected list is a shape this does not understand. Reporting
-        # every range it carries is what happened before and is wrong in the
-        # direction of noise; reporting none would be wrong in the direction of
-        # a missing fix.
-        return in_scope or affected
+        # every range it carries keeps the fix rather than losing it, but the
+        # ranges then span branches, and a reader who takes the lowest fixed
+        # version for their own can read a version below theirs as one they
+        # already have. Unnarrowed and said so beats either silence.
+        if affected:
+            self.parse_warnings.append(
+                f"{data.get('id') or 'a record'} came back for "
+                f"{scope.get('name')} on {scope.get('ecosystem')} but names neither, so its "
+                "versions are reported as it lists them, across every package and release "
+                "it covers"
+            )
+        return affected
 
     def _parse_vulnerability(
         self,

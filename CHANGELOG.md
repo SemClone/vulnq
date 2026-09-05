@@ -33,6 +33,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Alpine:v3.16.2` matches nothing. Version filtering stays with OSV, so a
   patched `openssl@1.1.1w-r1` still comes back clean
 
+- Alpine subpackages are answered under the package they are built from.
+  Alpine ships most libraries as subpackages of a source package, and OSV keys
+  its advisories by the source: `libcrypto1.1` and `libssl1.1` on
+  `Alpine:v3.16` return nothing, `openssl` returns 28. An SBOM names what is
+  installed, so the name in the PURL is usually not the name OSV holds, and
+  every one of those coordinates came back empty. syft writes the origin into
+  an `upstream=` qualifier when it differs, and that is now what is asked
+  about. A subpackage carries its origin's version, so only the name needed
+  translating
+
+- An empty Alpine answer is now checked rather than assumed to be a clean one.
+  OSV answers a coordinate it does not hold exactly as it answers a patched
+  package: with nothing. Asking the same package and release again without the
+  version separates them — a coordinate OSV holds answers with the package's
+  whole history — and only the second kind is reported as clean. The first says
+  what was not checked and why
+
+  This is what catches the two guesses the rewrite has to make. An Alpine edge
+  image reports the *next* release in its `VERSION_ID`
+  (`alpine-3.25.0_alpha20260805` today), which OSV has no data for until it
+  ships; a subpackage from a tool that writes no `upstream=` qualifier cannot
+  be rescued, only explained. Both used to return a silent zero
+
+- A record that comes back for an Alpine query but names neither the package
+  nor the release now says its versions were not narrowed. Its fix list then
+  spans branches — `ALPINE-CVE-2022-32221` fixes curl in `7.80.0-r4` on 3.15
+  and `7.86.0-r0` on 3.17 — and a reader taking the lowest entry can read a
+  version below their own as one they already have. The list is still reported
+  rather than dropped, because losing a fix is worse, but not silently
+
 - An Alpine PURL carrying no `distro=` qualifier now says so in `warnings`
   rather than returning a silent zero. There is no branchless Alpine data at
   OSV to fall back to, so an empty answer there is a gap in the question, not a
@@ -53,8 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `upstream` otherwise says what an advisory was derived from, and one Debian
   record cites thirty CVEs
 
-  Debian findings therefore merge with NVD and GitHub now where they did not
-  before, and pick up exploitability enrichment. `rpm` is unaffected; its
+  The same fold applies to `DEBIAN-CVE-*` and `UBUNTU-CVE-*`, which have the
+  same shape. What it buys them is KEV and EPSS enrichment, which is keyed by
+  CVE and reached none of them before. It does not make them merge with NVD or
+  GitHub, because neither source answers a `deb` or `apk` PURL at all — NVD
+  cannot resolve one to a CPE and GitHub has no ecosystem mapping for it — so
+  there is nothing on the other side to merge with. `rpm` is unaffected; its
   record ids are not built from the CVE
 
 - An Alpine answer now reports the fix for the package and branch that was
