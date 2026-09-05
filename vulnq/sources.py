@@ -147,36 +147,41 @@ RETIRED_SOURCES: Dict[str, str] = {"vulnerablecode": "2.0"}
 
 
 def retired_note(name: str) -> Optional[str]:
-    """Return the notice for a name that used to be a source.
+    """Return the fact about a name that used to be a source.
+
+    The fact only. What follows from it differs by what was asked - a request
+    to query it is refused, a request to disable it is ignored - so the caller
+    that knows which one it is says so.
 
     Args:
         name: The source name a caller used
 
     Returns:
-        A one-line notice, or None if the name was never a source here
+        A one-line statement, or None if the name was never a source here
     """
     removed_in = RETIRED_SOURCES.get(name.strip().lower())
     if not removed_in:
         return None
+    covering = ", ".join(spec.source.value for spec in REGISTRY)
     return (
-        f"the {name.strip().lower()} source was removed in {removed_in} and is being "
-        "ignored; osv, github and nvd cover its ecosystems and are queried by default"
+        f"the {name.strip().lower()} source was removed in {removed_in}; its ecosystems "
+        f"are covered by {covering}, which vulnq queries by default."
     )
 
 
 def warn_about_retired(names: Iterable[str]) -> None:
-    """Write a notice to stderr for each name that used to be a source.
+    """Say on stderr that a retired name in a disable list did nothing.
 
     On stderr for the same reason deprecation notices are: a caller reading
     `--format json` on stdout must not get one spliced into the document.
 
     Args:
-        names: The names a caller used, retired or not
+        names: The names a caller asked to disable, retired or not
     """
     for name in names:
         note = retired_note(name)
         if note:
-            print(f"warning: {note}", file=sys.stderr)
+            print(f"warning: {note} Nothing was disabled by that name.", file=sys.stderr)
 
 
 class UnknownSourceError(ValueError):
@@ -185,6 +190,19 @@ class UnknownSourceError(ValueError):
     Ignoring it would be worse than failing: whoever wrote the name believes
     that source is switched off, and it is not. A typo like "gitub" would leave
     GitHub quietly queried by someone who thinks they turned it off.
+    """
+
+
+class RetiredSourceError(UnknownSourceError):
+    """Raised when a caller asks to *query* a source that has been removed.
+
+    The two things a caller can say about a retired source are not the same
+    request. "Stop querying it" is already true, so it is forgiven and the
+    query runs. "Query it", or "query only it", cannot be honoured at all: the
+    answer would come from somewhere other than where the caller asked, and
+    handing that back is the outcome every other refusal here exists to
+    prevent. Whether it was said with a flag or an environment variable makes
+    no difference to which of the two it is.
     """
 
 
@@ -207,15 +225,20 @@ def parse_disabled(raw: Optional[str]) -> Tuple[VulnerabilitySource, ...]:
     known = {spec.source.value for spec in REGISTRY}
 
     # A name that was a source until recently is neither known nor a typo.
-    # Saying so and carrying on is the only answer that is not wrong.
-    warn_about_retired(sorted(named & set(RETIRED_SOURCES)))
+    # Forgiving it is the only answer that is not wrong: whoever wrote it is
+    # asking for something already true.
+    retired = sorted(named & set(RETIRED_SOURCES))
     named -= set(RETIRED_SOURCES)
 
     unknown = sorted(named - known)
     if unknown:
+        # Before the notice, not after. "vulnerablecode is being ignored"
+        # followed by an abort describes a run that did not happen.
         raise UnknownSourceError(
             f"Unknown source(s) to disable: {', '.join(unknown)}. "
             f"Valid sources: {', '.join(sorted(known))}."
         )
+
+    warn_about_retired(retired)
 
     return tuple(spec.source for spec in REGISTRY if spec.source.value in named)

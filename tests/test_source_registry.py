@@ -221,10 +221,10 @@ class TestTheCommandLineSurface:
         assert "--use-vulnerablecode" in proc.stderr
         assert proc.stdout == ""
 
-    def test_the_environment_variable_that_selected_a_removed_source_is_survivable(self):
-        """A job with USE_VULNERABLECODE=true baked in must still run, still
-        produce a document on stdout, and query the default fan-out."""
-        import json
+    def test_the_environment_variable_that_selected_a_removed_source_stops_the_run(self):
+        """It meant "query only VulnerableCode". Answering from three sources
+        the caller never named, and calling that the same job, is worse than
+        stopping - so it exits 2 with the reason, and emits no document."""
         import os
         import subprocess
         import sys
@@ -237,13 +237,10 @@ class TestTheCommandLineSurface:
             timeout=300,
             env=env,
         )
+        assert proc.returncode == 2
         assert "Traceback" not in proc.stderr, proc.stderr
-        assert "removed in 2.0" in proc.stderr
-        payload = json.loads(proc.stdout)
-        reported = set(payload["sources_checked"]) | set(payload["sources_skipped"])
-        reported |= {e.split(":")[0] for e in payload["errors"]}
-        assert "vulnerablecode" not in reported
-        assert "osv" in reported
+        assert "removed in 2.0" in proc.stdout + proc.stderr
+        assert proc.stdout.strip().startswith("USE_VULNERABLECODE") or proc.stdout == ""
 
     def test_disabling_a_source_from_the_command_line_runs(self):
         proc = self._run(

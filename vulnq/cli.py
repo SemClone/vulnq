@@ -11,7 +11,7 @@ from rich.text import Text
 from . import __version__
 from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity, VersionMatch, VulnerabilitySource
-from .sources import UnknownSourceError, parse_disabled
+from .sources import UnknownSourceError, parse_disabled, retired_note
 
 console = Console()
 
@@ -424,12 +424,13 @@ def main(
             console.print(f"[red]{e}[/red]")
             sys.exit(2)
 
-        # The flag replaces whatever the environment disabled, so an empty
-        # parse would re-enable it. A flag that names only retired sources
-        # parses to nothing and is supposed to be a no-op - switching a source
-        # back on is the one thing it must not do, and it would do it in
-        # silence, which is what UnknownSourceError exists to prevent.
-        if parsed:
+        # The flag replaces whatever the environment disabled, so `--disable-source ""`
+        # clears that list and always has. What must not clear it is a flag that
+        # named something and resolved to nothing, which is what a flag naming
+        # only retired sources now does: that is meant to be a no-op, and
+        # switching a source back on in silence is the one thing it must not do.
+        named_something = any(piece.strip() for piece in ",".join(disable_source).split(","))
+        if parsed or not named_something:
             config.disabled_sources = list(parsed)
 
     if kev_snapshot:
@@ -444,6 +445,9 @@ def main(
             try:
                 parsed.append(VulnerabilitySource(name))
             except ValueError:
+                note = retired_note(name)
+                if note:
+                    console.print(f"[yellow]{note}[/yellow]")
                 valid = ", ".join(source.value for source in VulnerabilitySource)
                 console.print(f"[red]Unknown source '{name}'.[/red] Available sources: {valid}")
                 sys.exit(2)

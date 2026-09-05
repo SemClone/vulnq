@@ -24,10 +24,11 @@ from .models import (
 from .sources import (
     BY_SOURCE,
     MERGE_PRIORITY,
+    RETIRED_SOURCES,
     SELECTABLE_SOURCES,
+    RetiredSourceError,
     parse_disabled,
     warn_about_deprecated,
-    warn_about_retired,
 )
 from .utils import detect_identifier_type, parse_identifier
 from .versions import sort_versions
@@ -113,13 +114,18 @@ class VulnerabilityQuery:
         # Load API keys from environment
         config.github_token = os.environ.get("GITHUB_TOKEN")
         config.nvd_api_key = os.environ.get("NVD_API_KEY")
-        # USE_VULNERABLECODE selected a source that no longer exists. It is
-        # read here only so it can say so: os.environ.get would otherwise skip
-        # it in silence, and a job that believes it is querying one thing would
-        # quietly query another. That silence is the whole reason the source got
-        # a deprecation release before this one.
+        # USE_VULNERABLECODE meant "query only VulnerableCode". The source is
+        # gone, so that cannot be honoured, and carrying on would answer from
+        # three sources the caller did not name - the same job, a different
+        # answer, reported as if nothing had changed. It is read here so that
+        # os.environ.get cannot skip it in silence, and refused for the same
+        # reason --sources refuses the name.
         if os.environ.get("USE_VULNERABLECODE", "").lower() == "true":
-            warn_about_retired(["vulnerablecode"])
+            raise RetiredSourceError(
+                "USE_VULNERABLECODE selects a source that was removed in "
+                f"{RETIRED_SOURCES['vulnerablecode']}. Unset it to query "
+                f"{', '.join(source.value for source in SELECTABLE_SOURCES)}."
+            )
 
         # An operator switches a source off here when its terms change, its
         # API is withdrawn, or it starts refusing them. A code change should

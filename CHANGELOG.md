@@ -10,10 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2026-09-05
 
 ### Removed
-- The `vulnerablecode` source, deprecated in 1.6.0 (#63). The client, its
-  tests and its recorded fixtures are gone, along with `--use-vulnerablecode`,
-  `--vulnerablecode-api-key`, `--vulnerablecode-url`, and the
-  `VULNERABLECODE_API_KEY` and `VULNERABLECODE_URL` environment variables
+- The `vulnerablecode` source, deprecated in 1.6.0 (#53) and deleted here
+  (#63). The client, its tests and its recorded fixtures are gone, along with
+  `--use-vulnerablecode`, `--vulnerablecode-api-key`, `--vulnerablecode-url`,
+  and the `VULNERABLECODE_API_KEY` and `VULNERABLECODE_URL` environment
+  variables
 
   It goes because it was measurably the weakest source in the registry, not
   because it was awkward to maintain. Across fifteen packages in eight
@@ -24,45 +25,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aliases to join on. It also held the lowest merge priority, so it deferred to
   the other three on every overlap and nothing it said ever decided an answer
 
-  The `deb` and `rpm` packages it declined are answered by OSV in the default
-  fan-out, and 1.7.0 closed the Alpine gap that was the one thing this removal
-  would otherwise have cost
+  Nothing loses coverage. The `deb` and `rpm` packages it declined outright are
+  answered by OSV in the default fan-out, and it declined `apk` and `alpine`
+  the same way, so the Alpine work in 1.7.0 filled a hole this source never
+  covered rather than one its removal opens
 
 ### Migration
-- `--sources vulnerablecode` now exits 2 and lists the sources that remain, as
-  any unknown name does
-- `--use-vulnerablecode` exits 2 naming the option. A flag cannot be quietly
-  ignored the way an environment variable can, so the script that passes it
-  stops rather than querying something its author did not choose
-- `USE_VULNERABLECODE=true` is read one last time, only so it can say it is
-  being ignored, and the query runs against the default fan-out. It was read
-  with `os.environ.get`, so dropping it outright would have skipped it in
-  silence and left a job querying something other than what it asked for. That
-  silence is the reason the source got a deprecation release before this one
+A name that is no longer a source can be said two ways, and they are not the
+same request. Asking to **stop querying** it is already true, so it is ignored
+and the run continues. Asking to **query** it cannot be honoured at all —
+answering from three sources the caller never named, and reporting that as the
+same job, is the outcome every refusal here exists to prevent — so it exits 2
+and says the source was removed rather than that the name is unknown.
+
+Ignored, run continues:
+
 - `VULNQ_DISABLED_SOURCES=vulnerablecode` and `--disable-source vulnerablecode`
-  are accepted as no-ops for one release, with the same notice. Whoever wrote
-  that is asking for something already true, and failing them for being right
-  is a worse answer than doing nothing. A typo like `gitub` still exits 2
+  are no-ops for one release, each with a notice on stderr. A typo like `gitub`
+  still exits 2, and a typo beside a retired name exits 2 without claiming
+  anything was ignored
 
-  Both notices go to stderr, so `--format json` on stdout stays a document
+Refused, exit 2:
 
-### Fixed
-- `--disable-source vulnerablecode` no longer switches a real source back on.
-  The flag replaces whatever the environment disabled, and a flag naming only
-  retired names parses to nothing, so it emptied the list instead of being the
-  no-op it is meant to be — `VULNQ_DISABLED_SOURCES=github` plus
-  `--disable-source vulnerablecode` queried GitHub. Silently re-enabling a
-  source somebody switched off is exactly the outcome the unknown-source error
-  exists to prevent
-- `VULNQ_DISABLED_SOURCES` is read in one place. `load_config()` read it and
-  click read it again through an `envvar=` on `--disable-source`, so the value
-  was parsed twice on every CLI run. That was harmless while parsing was
-  silent; it printed the retirement notice twice
+- `--sources vulnerablecode`
+- `USE_VULNERABLECODE=true`, which meant "query only VulnerableCode". It is
+  still read, because `os.environ.get` would otherwise skip it in silence and
+  leave a job querying something its author never chose. This is the surface
+  the deprecation release existed for
+- `--use-vulnerablecode`, which click refuses as an unknown option
 
-### Changed
-- `SourceSpec.removed_in` and `deprecation_note` stay. They are how the next
-  source gets deprecated, and the machinery should outlive its first user.
-  Nothing currently declares them
+Notices go to stderr, so `--format json` on stdout stays a document. The
+refusals print through the CLI's existing error path and produce no document at
+all.
+
+Callers holding data rather than configuration fail loudly and are not
+forgiven: `VulnerabilitySource.VULNERABLECODE` raises `AttributeError`,
+`Configuration(disabled_sources=["vulnerablecode"])` and
+`Configuration(vulnerablecode_api_key=...)` raise `ValidationError`, and
+re-loading a 1.7.0 `QueryResult` whose `sources_checked` names it does the
+same.
+
+### Kept
+- `SourceSpec.removed_in` and `deprecation_note`. They are how the next source
+  gets deprecated, and the machinery should outlive its first user. Nothing
+  declares them now, and `tests/test_deprecation.py` covers the fields rather
+  than the source that used to use them
 
 ## [1.7.0] - 2026-09-04
 

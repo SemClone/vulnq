@@ -29,6 +29,7 @@ from vulnq.sources import (
     REGISTRY,
     RETIRED_SOURCES,
     SourceSpec,
+    RetiredSourceError,
     UnknownSourceError,
     deprecation_warning,
     parse_disabled,
@@ -164,22 +165,79 @@ class TestTheNameARetiredSourceLeftBehind:
         with pytest.raises(UnknownSourceError):
             parse_disabled("gitub")
 
-    def test_the_environment_variable_that_selected_it_says_it_is_ignored(
+    def test_the_environment_variable_that_selected_it_is_refused(self, monkeypatch):
+        """It meant "query only VulnerableCode", which cannot be honoured.
+
+        The surface the deprecation release existed for: os.environ.get would
+        skip it in silence, and the job would answer from three sources its
+        author never named while reporting nothing had changed.
+        """
+        monkeypatch.setenv("USE_VULNERABLECODE", "true")
+
+        with pytest.raises(RetiredSourceError) as excinfo:
+            VulnerabilityQuery.load_config()
+
+        assert "removed in 2.0" in str(excinfo.value)
+
+    def test_refusing_it_is_caught_by_the_handler_that_already_exits_two(
         self, monkeypatch
     ):
-        """The surface the deprecation release existed for."""
+        """RetiredSourceError subclasses UnknownSourceError so the CLI's
+        existing handler gives it the same exit code as any bad source name."""
         monkeypatch.setenv("USE_VULNERABLECODE", "true")
 
-        # Said where it is read. There is no other path that names it.
-        assert "removed in 2.0" in _stderr_while(VulnerabilityQuery.load_config)
+        with pytest.raises(UnknownSourceError):
+            VulnerabilityQuery.load_config()
 
-    def test_the_environment_variable_no_longer_narrows_the_fanout(self, monkeypatch):
-        """It used to mean "query only VulnerableCode". It must not now mean
-        "query only" anything."""
-        monkeypatch.setenv("USE_VULNERABLECODE", "true")
-        config = VulnerabilityQuery.load_config()
+    def test_asking_to_query_it_and_asking_to_stop_are_not_the_same_request(self):
+        """The whole rule, in one place. "Stop querying it" is already true;
+        "query it" cannot be honoured at all."""
+        assert parse_disabled("vulnerablecode") == ()
 
-        assert VulnerabilitySource.OSV in (config.sources or [])
+        result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
+        assert result.exit_code == 2
+
+    def test_an_empty_disable_flag_still_clears_what_the_environment_disabled(self):
+        """Forgiving a retired name must not change what an empty flag means.
+
+        The flag replaces the environment's list, so `--disable-source ""` is
+        how a job overrides a baked-in variable to disable nothing.
+        """
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        skipped = json.loads(proc.stdout)["sources_skipped"]
+        assert "disabled" not in skipped.get("github", "")
+
+    def test_a_typo_beside_a_retired_name_is_not_told_anything_was_ignored(self):
+        """Nothing was ignored - the run aborts. Saying otherwise describes a
+        run that did not happen."""
+        result = CliRunner().invoke(
+            main, ["pkg:npm/x@1.0.0", "--disable-source", "vulnerablecode,gitub"]
+        )
+
+        assert result.exit_code == 2
+        assert "gitub" in result.output
+        assert "Nothing was disabled" not in result.output
 
     def test_the_notice_is_said_once_per_run_not_once_per_parse(self):
         """VULNQ_DISABLED_SOURCES was read by load_config and by click, so the
@@ -271,14 +329,18 @@ class TestTheNameARetiredSourceLeftBehind:
         assert "nvd" in skipped
         assert "disabled" not in skipped.get("github", "")
 
-    def test_selecting_it_by_name_fails_and_lists_what_is_left(self):
+    def test_selecting_it_by_name_says_it_was_removed_not_that_it_never_was(self):
+        """"Unknown source" alone reads as a typo, and sends the reader looking
+        for a spelling mistake in a name they spelled correctly."""
         result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
 
         assert result.exit_code == 2
+        assert "removed in 2.0" in result.output
+        assert "Unknown source 'vulnerablecode'" in result.output
         assert "osv" in result.output
 
 
-def test_the_notices_stay_off_stdout():
+def test_the_notice_stays_off_stdout():
     """A caller reading --format json on stdout would otherwise get a warning
     spliced into the document, which is worse than the problem it reports."""
     result = subprocess.run(
@@ -286,7 +348,7 @@ def test_the_notices_stay_off_stdout():
             sys.executable,
             "-c",
             "import os;"
-            "os.environ['USE_VULNERABLECODE'] = 'true';"
+            "os.environ['VULNQ_DISABLED_SOURCES'] = 'vulnerablecode';"
             "from vulnq.core import VulnerabilityQuery;"
             "VulnerabilityQuery(config=VulnerabilityQuery.load_config())",
         ],
