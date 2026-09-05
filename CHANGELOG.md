@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-04
+
+### Fixed
+- Alpine `apk` packages are now answered by OSV instead of coming back empty
+  (#63). OSV's PURL index does not reach `pkg:apk`, so `pkg:apk/alpine/openssl@
+  1.1.1q-r0` returned nothing — not an error, and indistinguishable from a
+  package with nothing against it. The advisories were there the whole time,
+  keyed by release branch and reachable only by name and ecosystem:
+
+  ```console
+  $ curl -s https://api.osv.dev/v1/query \
+      -d '{"package":{"purl":"pkg:apk/alpine/openssl@1.1.1q-r0"}}'
+  {}
+
+  $ curl -s https://api.osv.dev/v1/query \
+      -d '{"version":"1.1.1q-r0","package":{"name":"openssl","ecosystem":"Alpine:v3.16"}}'
+  ALPINE-CVE-2022-4304, ALPINE-CVE-2022-4450, ... (9)
+  ```
+
+  An `apk` PURL under the `alpine` namespace now goes out as a name and branch
+  query, with the branch read from the `distro=` qualifier. The spelling tools
+  use varies — syft writes `alpine-3.16.2`, trivy `3.16.2` — and all of them
+  land on `Alpine:v3.16`, because OSV names a branch with two components and
+  `Alpine:v3.16.2` matches nothing. Version filtering stays with OSV, so a
+  patched `openssl@1.1.1w-r1` still comes back clean
+
+- Alpine subpackages are answered under the package they are built from.
+  Alpine ships most libraries as subpackages of a source package, and OSV keys
+  its advisories by the source: `libcrypto1.1` and `libssl1.1` on
+  `Alpine:v3.16` return nothing, `openssl` returns 28. An SBOM names what is
+  installed, so the name in the PURL is usually not the name OSV holds, and
+  every one of those coordinates came back empty. syft writes the origin into
+  an `upstream=` qualifier when it differs, and that is now what is asked
+  about. A subpackage carries its origin's version, so only the name needed
+  translating
+
+- An empty Alpine answer is now checked rather than assumed to be a clean one.
+  OSV answers a coordinate it does not hold exactly as it answers a patched
+  package: with nothing. Asking the same package and release again without the
+  version separates them — a coordinate OSV holds answers with the package's
+  whole history — and only the second kind is reported as clean. The first says
+  what was not checked and why
+
+  This is what catches the two guesses the rewrite has to make. An Alpine edge
+  image reports the *next* release in its `VERSION_ID`
+  (`alpine-3.25.0_alpha20260805` today), which OSV has no data for until it
+  ships; a subpackage from a tool that writes no `upstream=` qualifier cannot
+  be rescued, only explained. Both used to return a silent zero
+
+- A record that comes back for an Alpine query but names neither the package
+  nor the release now says its versions were not narrowed. Its fix list then
+  spans branches — `ALPINE-CVE-2022-32221` fixes curl in `7.80.0-r4` on 3.15
+  and `7.86.0-r0` on 3.17 — and a reader taking the lowest entry can read a
+  version below their own as one they already have. The list is still reported
+  rather than dropped, because losing a fix is worse, but not silently
+
+- An Alpine PURL carrying no `distro=` qualifier now says so in `warnings`
+  rather than returning a silent zero. There is no branchless Alpine data at
+  OSV to fall back to, so an empty answer there is a gap in the question, not a
+  clean package
+
+- A distro advisory now carries the CVE it republishes, so it joins the other
+  sources instead of standing alone. OSV records that relationship in
+  `upstream`, not `aliases`, so `ALPINE-CVE-2022-4304` and
+  `DEBIAN-CVE-2019-5481` both arrived with an empty alias list and never
+  grouped with NVD or GitHub on the CVE — and KEV and EPSS, which are keyed by
+  CVE, never reached them at all
+
+  Only an upstream id the record's own id is built from is folded in, which is
+  the one relationship that means "the same vulnerability, renamed". It never
+  matches twice, so it cannot merge two advisories into one. Measured against
+  the live API: every Alpine record (246 of 246 across six packages) and the
+  121 of 139 Debian records that are not aggregates. The rest are left alone —
+  `upstream` otherwise says what an advisory was derived from, and one Debian
+  record cites thirty CVEs
+
+  The same fold applies to `DEBIAN-CVE-*` and `UBUNTU-CVE-*`, which have the
+  same shape. What it buys them is KEV and EPSS enrichment, which is keyed by
+  CVE and reached none of them before. It does not make them merge with NVD or
+  GitHub, because neither source answers a `deb` or `apk` PURL at all — NVD
+  cannot resolve one to a CPE and GitHub has no ecosystem mapping for it — so
+  there is nothing on the other side to merge with. `rpm` is unaffected; its
+  record ids are not built from the CVE
+
+- An Alpine answer now reports the fix for the package and branch that was
+  asked about. One OSV record covers every package and branch an advisory
+  touches — `ALPINE-CVE-2022-4304` carries thirteen, `openssl` across eleven
+  Alpine branches and `openssl3` across two — and reading all of them into one
+  answer put `openssl3`'s `3.0.8-r0` beside `openssl`'s `1.1.1t-r0` under
+  `--show-fixes`. A record whose own naming does not match the query still
+  reports everything it carries, because a missing fix is worse than a noisy
+  one
+
+  This narrowing applies only where the query named a package and an
+  ecosystem, which today is the Alpine path alone. A `deb` or `rpm` PURL goes
+  out as a coordinate with no suite in it, so there is nothing to narrow to and
+  those answers still carry every suite's fix — `curl@7.64.0-4` reports two
+  fixed versions on 32 of its 139 records. That is unchanged, and known
+
+  `pkg:apk/wolfi` and `pkg:apk/chainguard` are unchanged: both resolve through
+  OSV's PURL index today, and their advisories sit under a bare `Wolfi` and
+  `Chainguard` with no branch to name. Passing `distro=` on a `deb` PURL is
+  also still avoided — it narrows OSV's answer rather than sharpening it, with
+  `curl@7.64.0-4?distro=buster` returning 9 where the bare coordinate returns
+  139
+
 ## [1.6.0] - 2026-09-04
 
 ### Deprecated

@@ -135,6 +135,18 @@ Incomplete answers:
 That is the safe direction — under-reporting, not a false clean bill — but only
 if you can see it happened.
 
+The same rule covers a question a source cannot answer as asked:
+
+```console
+$ vulnq pkg:apk/alpine/openssl@1.1.1q-r0
+Found 0 vulnerabilities: 0 critical, 0 high
+
+Incomplete answers:
+  • osv: no Alpine release named in a distro= qualifier on
+    pkg:apk/alpine/openssl@1.1.1q-r0; OSV keys its Alpine advisories by
+    release, so none were checked
+```
+
 ### Version matching
 
 Sources disagree about who filters by version. OSV and NVD do it server-side.
@@ -172,6 +184,24 @@ carrying build metadata, a range grammar outside GitHub's — falls through to
 - `pkg:cargo/package@version`
 - `pkg:nuget/package@version`
 - `pkg:golang/module@version`
+- `pkg:deb/debian/package@version`
+- `pkg:rpm/redhat/package@version`
+- `pkg:apk/alpine/package@version?distro=alpine-3.16&upstream=origin`
+
+Alpine is the one that needs qualifiers. OSV keys its Alpine advisories two
+ways, and a PURL missing either comes back empty:
+
+- **by release branch**, from `distro=`. `alpine-3.16.2`, `3.16.2` and `v3.16`
+  all read as the same branch, so whatever your SBOM tool writes will do.
+- **by origin package**, from `upstream=`. Alpine ships most libraries as
+  subpackages — `libcrypto1.1` and `libssl1.1` both come from `openssl` — and
+  the advisories are filed under the origin. syft writes `upstream=` when the
+  two differ.
+
+An Alpine answer with nothing in it is checked before it is reported as clean,
+so a branch that does not exist yet, or a subpackage nobody named the origin
+of, says so in `warnings` instead of reading as a clean bill.
+`pkg:apk/wolfi` and `pkg:apk/chainguard` need none of this.
 
 ### CPE (Common Platform Enumeration)
 - `cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*`

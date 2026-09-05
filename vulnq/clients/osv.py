@@ -3,6 +3,8 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from packageurl import PackageURL
+
 from ..cvss import base_score, coerce_score
 from ..models import Severity, VersionMatch, Vulnerability, VulnerabilitySource
 from ..versions import sort_versions
@@ -12,6 +14,27 @@ from .base import BaseClient, UnsupportedQueryError
 # hands back a token for the rest; ignoring it reported 3000 of an unknown
 # larger total as if that were the whole answer.
 MAX_PAGES = 10
+
+
+# OSV keys its Alpine advisories by release branch - the ecosystem is
+# "Alpine:v3.16", never a bare "Alpine" - and its PURL index does not reach
+# pkg:apk at all. An apk coordinate therefore comes back as {} rather than an
+# error, which is indistinguishable from a package with nothing against it:
+#
+#     pkg:apk/alpine/openssl@1.1.1q-r0                    0 records
+#     name=openssl, ecosystem=Alpine:v3.16, version=...   9 records
+#
+# Asking by name and ecosystem is the only way to see that data. Only Alpine
+# needs it: pkg:apk/wolfi and pkg:apk/chainguard resolve through the PURL index
+# today, and their advisories sit under a bare "Wolfi" and "Chainguard" with no
+# branch to name, so they must keep going out as PURLs.
+_ALPINE_NAMESPACE = "alpine"
+
+# The branch lives in the distro qualifier, which tools spell differently:
+# syft writes "alpine-3.16.2", trivy "3.16.2", others "v3.16". OSV names a
+# branch with two components and no more - "Alpine:v3.16.2" matches nothing -
+# so a third is read and dropped.
+_ALPINE_BRANCH = re.compile(r"(\d+)\.(\d+)")
 
 
 # OSV writes a 3.x or 4.0 vector with its CVSS: prefix. The schema also allows
@@ -62,8 +85,12 @@ class OSVClient(BaseClient):
         vulns: List[Dict[str, Any]] = []
         page_token: Optional[str] = None
 
+        # Alpine is asked by name and branch; everything else by PURL.
+        alpine = self._alpine_query(purl)
+        query = alpine or {"package": {"purl": purl}}
+
         for _ in range(MAX_PAGES):
-            data: Dict[str, Any] = {"package": {"purl": purl}}
+            data: Dict[str, Any] = dict(query)
             if page_token:
                 data["page_token"] = page_token
 
@@ -84,7 +111,120 @@ class OSVClient(BaseClient):
                 f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 
-        return self._parse_vulns(vulns, self._queried_version(purl), self._ecosystem_of(purl))
+        if alpine and not vulns:
+            await self._explain_empty_alpine_answer(url, alpine)
+
+        return self._parse_vulns(
+            vulns,
+            self._queried_version(purl),
+            self._ecosystem_of(purl),
+            # Only the Alpine path knows both halves of what it asked for.
+            scope=alpine["package"] if alpine else None,
+        )
+
+    async def _explain_empty_alpine_answer(self, url: str, query: Dict[str, Any]) -> None:
+        """Say whether an empty Alpine answer means clean or means unasked.
+
+        OSV answers a coordinate it does not hold exactly as it answers a
+        patched package: with nothing. Those are opposite facts, and the two
+        ways to get the first one are the two things this rewrite has to guess -
+        the release branch, read from a distro string that can name an
+        unreleased or misspelled one, and the origin package, which is only in
+        the PURL if the tool that wrote it bothered.
+
+        Asking the same coordinate without a version separates them. A branch
+        and name OSV holds answer with the package's whole history; one it does
+        not hold answers with nothing again.
+
+        Args:
+            url: The query endpoint
+            query: The Alpine request body that came back empty
+        """
+        package = query["package"]
+        described = f"{package['name']} on {package['ecosystem']}"
+
+        if "version" in query:
+            try:
+                response = await self._make_request("POST", url, json={"package": package})
+            except Exception:
+                # The check is advisory, but an unconfirmed empty answer must
+                # not pass for a confirmed one.
+                self.parse_warnings.append(
+                    f"nothing came back for {described}, and the follow-up that would say "
+                    "whether OSV holds that package and release at all did not answer; "
+                    "this is not a clean bill"
+                )
+                return
+
+            if response.get("vulns"):
+                # OSV holds this coordinate and had nothing to say about this
+                # version. That is a clean answer, and it is the whole point.
+                return
+
+        self.parse_warnings.append(
+            f"OSV holds no advisories at all for {described}, so nothing was actually "
+            "checked. Alpine data is keyed by release branch and by origin package: "
+            "the branch may not exist yet, and a subpackage needs an upstream= "
+            "qualifier naming the package it is built from"
+        )
+
+    def _alpine_query(self, purl: str) -> Optional[Dict[str, Any]]:
+        """Return an Alpine name-and-branch query body for an apk PURL.
+
+        Args:
+            purl: Package URL string, of any type
+
+        Returns:
+            A request body naming the package and its Alpine branch, or None
+            for anything that should go out as a PURL instead
+        """
+        try:
+            parsed = PackageURL.from_string(purl)
+        except Exception:
+            return None
+
+        if parsed.type != "apk" or (parsed.namespace or "").lower() != _ALPINE_NAMESPACE:
+            return None
+
+        qualifiers = parsed.qualifiers or {}
+
+        # Alpine ships most libraries as subpackages of a source package, and
+        # OSV keys its advisories by the source, not the subpackage. An SBOM
+        # names what is installed, so the name in the PURL is usually not the
+        # name OSV holds:
+        #
+        #     libcrypto1.1, Alpine:v3.16     0 records
+        #     libssl1.1,    Alpine:v3.16     0 records
+        #     openssl,      Alpine:v3.16    28 records
+        #
+        # syft writes the origin into an upstream= qualifier when it differs,
+        # which is the only place that mapping survives into a PURL. Some tools
+        # write it as name@version; only the name is a key, and a subpackage
+        # carries its origin's version, so the version needs no translating.
+        name = (qualifiers.get("upstream") or "").split("@", 1)[0] or parsed.name
+
+        branch = _ALPINE_BRANCH.search(qualifiers.get("distro") or "")
+        if not branch:
+            # There is no branch to ask about, so the PURL query runs and comes
+            # back empty. Saying why keeps that apart from a clean package.
+            self.parse_warnings.append(
+                f"no Alpine release named in a distro= qualifier on {purl}; OSV keys its "
+                "Alpine advisories by release, so none were checked"
+            )
+            return None
+
+        query: Dict[str, Any] = {
+            "package": {
+                "name": name,
+                "ecosystem": f"Alpine:v{branch.group(1)}.{branch.group(2)}",
+            }
+        }
+        # A versionless PURL asks for every advisory against the package, and
+        # OSV filters by version only when the query carries one.
+        if parsed.version:
+            query["version"] = parsed.version
+
+        return query
 
     async def query_cpe(self, cpe: str) -> List[Vulnerability]:
         """Query vulnerabilities for a CPE string.
@@ -105,12 +245,16 @@ class OSVClient(BaseClient):
         vulns: List[Dict[str, Any]],
         queried_version: Optional[str] = None,
         ecosystem: Optional[str] = None,
+        scope: Optional[Dict[str, str]] = None,
     ) -> List[Vulnerability]:
         """Turn OSV records into Vulnerability objects.
 
         Args:
             vulns: Records, possibly gathered across several pages
             queried_version: Version pinned by the query, if any
+            ecosystem: PURL type, which decides how version lists are ordered
+            scope: The OSV name and ecosystem the query named, when it named
+                one, so a record covering several can be read down to it
 
         Returns:
             List of Vulnerability objects
@@ -124,7 +268,7 @@ class OSVClient(BaseClient):
 
         for vuln_data in vulns:
             try:
-                vuln = self._parse_vulnerability(vuln_data, queried_version, ecosystem)
+                vuln = self._parse_vulnerability(vuln_data, queried_version, ecosystem, scope)
                 if vuln:
                     vulnerabilities.append(vuln)
                 else:
@@ -151,17 +295,71 @@ class OSVClient(BaseClient):
 
         return vulnerabilities
 
+    def _affected_in_scope(
+        self, data: Dict[str, Any], scope: Optional[Dict[str, str]]
+    ) -> List[Dict[str, Any]]:
+        """Return the affected entries the query actually asked about.
+
+        One OSV record covers every package and branch an advisory touches.
+        ALPINE-CVE-2022-4304 carries thirteen entries: openssl across eleven
+        Alpine branches, and openssl3 across two. Reading all of them into one
+        answer reports the fix for a package nobody asked about - openssl on
+        Alpine:v3.16 is fixed in 1.1.1t-r0, and flattening added openssl3's
+        3.0.8-r0 beside it.
+
+        Args:
+            data: A raw OSV record
+            scope: The OSV name and ecosystem the query named, or None when the
+                query went out as a PURL and the record's own naming is the
+                only thing there is to go on
+
+        Returns:
+            The matching entries, or all of them when nothing matched
+        """
+        affected = data.get("affected") or []
+        if not scope:
+            return affected
+
+        in_scope = [
+            entry
+            for entry in affected
+            if (entry.get("package") or {}).get("name") == scope.get("name")
+            and (entry.get("package") or {}).get("ecosystem") == scope.get("ecosystem")
+        ]
+
+        if in_scope:
+            return in_scope
+
+        # A record that answered the query but names the package differently in
+        # its own affected list is a shape this does not understand. Reporting
+        # every range it carries keeps the fix rather than losing it, but the
+        # ranges then span branches, and a reader who takes the lowest fixed
+        # version for their own can read a version below theirs as one they
+        # already have. Unnarrowed and said so beats either silence.
+        if affected:
+            self.parse_warnings.append(
+                f"{data.get('id') or 'a record'} came back for "
+                f"{scope.get('name')} on {scope.get('ecosystem')} but names neither, so its "
+                "versions are reported as it lists them, across every package and release "
+                "it covers"
+            )
+        return affected
+
     def _parse_vulnerability(
         self,
         data: Dict[str, Any],
         queried_version: Optional[str] = None,
         ecosystem: Optional[str] = None,
+        scope: Optional[Dict[str, str]] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
             queried_version: Version pinned by the query, if any
+            ecosystem: PURL type, which decides how version lists are ordered
+            scope: The OSV name and ecosystem the query named, when it named
+                one, so a record covering several can be read down to it
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -172,7 +370,25 @@ class OSVClient(BaseClient):
             return None
 
         # Get aliases (CVE, GHSA, etc.)
-        aliases = data.get("aliases", [])
+        aliases = list(data.get("aliases") or [])
+
+        # A distro republishes an upstream advisory under its own id, and OSV
+        # records that in `upstream` rather than `aliases`. ALPINE-CVE-2022-4304
+        # and DEBIAN-CVE-2019-5481 both arrive with an empty alias list and the
+        # CVE one field over, so they join nothing: deduplication groups on the
+        # first CVE alias, and KEV and EPSS are keyed by CVE.
+        #
+        # Only an upstream id this record's own id is built from is folded in.
+        # That is the one relationship that means "the same vulnerability,
+        # renamed", and it never matches twice, so it cannot merge two
+        # advisories into one. Measured across the live API: every Alpine record
+        # (246 of 246) and the 121 of 139 Debian records that are not
+        # aggregates. `upstream` otherwise says what an advisory was derived
+        # from, which is a weaker claim - one Debian record cites thirty CVEs -
+        # and those are left where they are.
+        for upstream in data.get("upstream") or []:
+            if upstream and vuln_id.endswith(f"-{upstream}") and upstream not in aliases:
+                aliases.append(upstream)
 
         # Parse severity
         severity = Severity.UNKNOWN
@@ -232,7 +448,7 @@ class OSVClient(BaseClient):
         affected_versions = []
         fixed_versions = []
 
-        for affected in data.get("affected", []):
+        for affected in self._affected_in_scope(data, scope):
             # Get affected version ranges
             for range_info in affected.get("ranges", []):
                 for event in range_info.get("events", []):

@@ -1,0 +1,2908 @@
+{
+  "vulns": [
+    {
+      "id": "ALPINE-CVE-2022-4304",
+      "details": "A timing based side channel exists in the OpenSSL RSA Decryption implementation\nwhich could be sufficient to recover a plaintext across a network in a\nBleichenbacher style attack. To achieve a successful decryption an attacker\nwould have to be able to send a very large number of trial messages for\ndecryption. The vulnerability affects all RSA padding modes: PKCS#1 v1.5,\nRSA-OEAP and RSASVE.\n\nFor example, in a TLS connection, RSA is commonly used by a client to send an\nencrypted pre-master secret to the server. An attacker that had observed a\ngenuine connection between a client and a server could use this flaw to send\ntrial messages to the server and record the time taken to process them. After a\nsufficiently large number of messages the attacker could recover the pre-master\nsecret used for the original connection and thus be able to decrypt the\napplication data sent over that connection.",
+      "modified": "2026-08-27T22:18:02.049351777Z",
+      "published": "2023-02-08T20:15:23.887Z",
+      "upstream": [
+        "CVE-2022-4304"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2022-4304"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4304.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2022-4450",
+      "details": "The function PEM_read_bio_ex() reads a PEM file from a BIO and parses and\ndecodes the \"name\" (e.g. \"CERTIFICATE\"), any header data and the payload data.\nIf the function succeeds then the \"name_out\", \"header\" and \"data\" arguments are\npopulated with pointers to buffers containing the relevant decoded data. The\ncaller is responsible for freeing those buffers. It is possible to construct a\nPEM file that results in 0 bytes of payload data. In this case PEM_read_bio_ex()\nwill return a failure code but will populate the header argument with a pointer\nto a buffer that has already been freed. If the caller also frees this buffer\nthen a double free will occur. This will most likely lead to a crash. This\ncould be exploited by an attacker who has the ability to supply malicious PEM\nfiles for parsing to achieve a denial of service attack.\n\nThe functions PEM_read_bio() and PEM_read() are simple wrappers around\nPEM_read_bio_ex() and therefore these functions are also directly affected.\n\nThese functions are also called indirectly by a number of other OpenSSL\nfunctions including PEM_X509_INFO_read_bio_ex() and\nSSL_CTX_use_serverinfo_file() which are also vulnerable. Some OpenSSL internal\nuses of these functions are not vulnerable because the caller does not free the\nheader argument if PEM_read_bio_ex() returns a failure code. These locations\ninclude the PEM_read_bio_TYPE() functions as well as the decoders introduced in\nOpenSSL 3.0.\n\nThe OpenSSL asn1parse command line application is also impacted by this issue.",
+      "modified": "2026-08-27T22:18:02.054833203Z",
+      "published": "2023-02-08T20:15:23.973Z",
+      "upstream": [
+        "CVE-2022-4450"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2022-4450"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.1.1"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2022-4450.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-0215",
+      "details": "The public API function BIO_new_NDEF is a helper function used for streaming\nASN.1 data via a BIO. It is primarily used internally to OpenSSL to support the\nSMIME, CMS and PKCS7 streaming capabilities, but may also be called directly by\nend user applications.\n\nThe function receives a BIO from the caller, prepends a new BIO_f_asn1 filter\nBIO onto the front of it to form a BIO chain, and then returns the new head of\nthe BIO chain to the caller. Under certain conditions, for example if a CMS\nrecipient public key is invalid, the new filter BIO is freed and the function\nreturns a NULL result indicating a failure. However, in this case, the BIO chain\nis not properly cleaned up and the BIO passed by the caller still retains\ninternal pointers to the previously freed filter BIO. If the caller then goes on\nto call BIO_pop() on the BIO then a use-after-free will occur. This will most\nlikely result in a crash.\n\n\n\nThis scenario occurs directly in the internal function B64_write_ASN1() which\nmay cause BIO_new_NDEF() to be called and will subsequently call BIO_pop() on\nthe BIO. This internal function is in turn called by the public API functions\nPEM_write_bio_ASN1_stream, PEM_write_bio_CMS_stream, PEM_write_bio_PKCS7_stream,\nSMIME_write_ASN1, SMIME_write_CMS and SMIME_write_PKCS7.\n\nOther public API functions that may be impacted by this include\ni2d_ASN1_bio_stream, BIO_new_CMS, BIO_new_PKCS7, i2d_CMS_bio_stream and\ni2d_PKCS7_bio_stream.\n\nThe OpenSSL cms and smime command line applications are similarly affected.",
+      "modified": "2026-08-27T22:18:02.212125876Z",
+      "published": "2023-02-08T20:15:24.107Z",
+      "upstream": [
+        "CVE-2023-0215"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-0215"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0215.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-0286",
+      "details": "There is a type confusion vulnerability relating to X.400 address processing\ninside an X.509 GeneralName. X.400 addresses were parsed as an ASN1_STRING but\nthe public structure definition for GENERAL_NAME incorrectly specified the type\nof the x400Address field as ASN1_TYPE. This field is subsequently interpreted by\nthe OpenSSL function GENERAL_NAME_cmp as an ASN1_TYPE rather than an\nASN1_STRING.\n\nWhen CRL checking is enabled (i.e. the application sets the\nX509_V_FLAG_CRL_CHECK flag), this vulnerability may allow an attacker to pass\narbitrary pointers to a memcmp call, enabling them to read memory contents or\nenact a denial of service. In most cases, the attack requires the attacker to\nprovide both the certificate chain and CRL, neither of which need to have a\nvalid signature. If the attacker only controls one of these inputs, the other\ninput must already contain an X.400 address as a CRL distribution point, which\nis uncommon. As such, this vulnerability is most likely to only affect\napplications which have implemented their own functionality for retrieving CRLs\nover a network.",
+      "modified": "2026-08-27T22:18:02.212948667Z",
+      "published": "2023-02-08T20:15:24.267Z",
+      "upstream": [
+        "CVE-2023-0286"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-0286"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0286.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:H"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-0464",
+      "details": "A security vulnerability has been identified in all supported versions\n\nof OpenSSL related to the verification of X.509 certificate chains\nthat include policy constraints.  Attackers may be able to exploit this\nvulnerability by creating a malicious certificate chain that triggers\nexponential use of computational resources, leading to a denial-of-service\n(DoS) attack on affected systems.\n\nPolicy processing is disabled by default but can be enabled by passing\nthe `-policy' argument to the command line utilities or by calling the\n`X509_VERIFY_PARAM_set1_policies()' function.",
+      "modified": "2026-08-27T22:18:02.213987926Z",
+      "published": "2023-03-22T17:15:13.130Z",
+      "upstream": [
+        "CVE-2023-0464"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-0464"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0464.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-0465",
+      "details": "Applications that use a non-default option when verifying certificates may be\nvulnerable to an attack from a malicious CA to circumvent certain checks.\n\nInvalid certificate policies in leaf certificates are silently ignored by\nOpenSSL and other certificate policy checks are skipped for that certificate.\nA malicious CA could use this to deliberately assert invalid certificate policies\nin order to circumvent policy checking on the certificate altogether.\n\nPolicy processing is disabled by default but can be enabled by passing\nthe `-policy' argument to the command line utilities or by calling the\n`X509_VERIFY_PARAM_set1_policies()' function.",
+      "modified": "2026-08-27T22:18:02.214063084Z",
+      "published": "2023-03-28T15:15:06.820Z",
+      "upstream": [
+        "CVE-2023-0465"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-0465"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.14",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1t-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.8-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.0-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.8-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-0465.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-2650",
+      "details": "Issue summary: Processing some specially crafted ASN.1 object identifiers or\ndata containing them may be very slow.\n\nImpact summary: Applications that use OBJ_obj2txt() directly, or use any of\nthe OpenSSL subsystems OCSP, PKCS7/SMIME, CMS, CMP/CRMF or TS with no message\nsize limit may experience notable to very long delays when processing those\nmessages, which may lead to a Denial of Service.\n\nAn OBJECT IDENTIFIER is composed of a series of numbers - sub-identifiers -\nmost of which have no size limit.  OBJ_obj2txt() may be used to translate\nan ASN.1 OBJECT IDENTIFIER given in DER encoding form (using the OpenSSL\ntype ASN1_OBJECT) to its canonical numeric text form, which are the\nsub-identifiers of the OBJECT IDENTIFIER in decimal form, separated by\nperiods.\n\nWhen one of the sub-identifiers in the OBJECT IDENTIFIER is very large\n(these are sizes that are seen as absurdly large, taking up tens or hundreds\nof KiBs), the translation to a decimal number in text may take a very long\ntime.  The time complexity is O(n^2) with 'n' being the size of the\nsub-identifiers in bytes (*).\n\nWith OpenSSL 3.0, support to fetch cryptographic algorithms using names /\nidentifiers in string form was introduced.  This includes using OBJECT\nIDENTIFIERs in canonical numeric text form as identifiers for fetching\nalgorithms.\n\nSuch OBJECT IDENTIFIERs may be received through the ASN.1 structure\nAlgorithmIdentifier, which is commonly used in multiple protocols to specify\nwhat cryptographic algorithm should be used to sign or verify, encrypt or\ndecrypt, or digest passed data.\n\nApplications that call OBJ_obj2txt() directly with untrusted data are\naffected, with any version of OpenSSL.  If the use is for the mere purpose\nof display, the severity is considered low.\n\nIn OpenSSL 3.0 and newer, this affects the subsystems OCSP, PKCS7/SMIME,\nCMS, CMP/CRMF or TS.  It also impacts anything that processes X.509\ncertificates, including simple things like verifying its signature.\n\nThe impact on TLS is relatively low, because all versions of OpenSSL have a\n100KiB limit on the peer's certificate chain.  Additionally, this only\nimpacts clients, or servers that have explicitly enabled client\nauthentication.\n\nIn OpenSSL 1.1.1 and 1.0.2, this only affects displaying diverse objects,\nsuch as X.509 certificates.  This is assumed to not happen in such a way\nthat it would cause a Denial of Service, so these versions are considered\nnot affected by this issue in such a way that it would be cause for concern,\nand the severity is therefore considered low.",
+      "modified": "2026-08-27T22:18:02.228243218Z",
+      "published": "2023-05-30T14:15:09.683Z",
+      "upstream": [
+        "CVE-2023-2650"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-2650"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1u-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1u-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.9-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.1-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.9-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.9-r0"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-2650.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-3446",
+      "details": "Issue summary: Checking excessively long DH keys or parameters may be very slow.\n\nImpact summary: Applications that use the functions DH_check(), DH_check_ex()\nor EVP_PKEY_param_check() to check a DH key or DH parameters may experience long\ndelays. Where the key or parameters that are being checked have been obtained\nfrom an untrusted source this may lead to a Denial of Service.\n\nThe function DH_check() performs various checks on DH parameters. One of those\nchecks confirms that the modulus ('p' parameter) is not too large. Trying to use\na very large modulus is slow and OpenSSL will not normally use a modulus which\nis over 10,000 bits in length.\n\nHowever the DH_check() function checks numerous aspects of the key or parameters\nthat have been supplied. Some of those checks use the supplied modulus value\neven if it has already been found to be too large.\n\nAn application that calls DH_check() and supplies a key or parameters obtained\nfrom an untrusted source could be vulernable to a Denial of Service attack.\n\nThe function DH_check() is itself called by a number of other OpenSSL functions.\nAn application calling any of those other functions may similarly be affected.\nThe other functions affected by this are DH_check_ex() and\nEVP_PKEY_param_check().\n\nAlso vulnerable are the OpenSSL dhparam and pkeyparam command line applications\nwhen using the '-check' option.\n\nThe OpenSSL SSL/TLS implementation is not affected by this issue.\nThe OpenSSL 3.0 and 3.1 FIPS providers are not affected by this issue.",
+      "modified": "2026-08-27T22:18:02.243115400Z",
+      "published": "2023-07-19T12:15:10.003Z",
+      "upstream": [
+        "CVE-2023-3446"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-3446"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "1.1.1u-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "1.1.1u-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.9-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.1.1-r3"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.9-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl3",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl3?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.9-r2"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-3446.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+        }
+      ]
+    },
+    {
+      "id": "ALPINE-CVE-2023-5678",
+      "details": "Issue summary: Generating excessively long X9.42 DH keys or checking\nexcessively long X9.42 DH keys or parameters may be very slow.\n\nImpact summary: Applications that use the functions DH_generate_key() to\ngenerate an X9.42 DH key may experience long delays.  Likewise, applications\nthat use DH_check_pub_key(), DH_check_pub_key_ex() or EVP_PKEY_public_check()\nto check an X9.42 DH key or X9.42 DH parameters may experience long delays.\nWhere the key or parameters that are being checked have been obtained from\nan untrusted source this may lead to a Denial of Service.\n\nWhile DH_check() performs all the necessary checks (as of CVE-2023-3817),\nDH_check_pub_key() doesn't make any of these checks, and is therefore\nvulnerable for excessively large P and Q parameters.\n\nLikewise, while DH_generate_key() performs a check for an excessively large\nP, it doesn't check for an excessively large Q.\n\nAn application that calls DH_generate_key() or DH_check_pub_key() and\nsupplies a key or parameters obtained from an untrusted source could be\nvulnerable to a Denial of Service attack.\n\nDH_generate_key() and DH_check_pub_key() are also called by a number of\nother OpenSSL functions.  An application calling any of those other\nfunctions may similarly be affected.  The other functions affected by this\nare DH_check_pub_key_ex(), EVP_PKEY_public_check(), and EVP_PKEY_generate().\n\nAlso vulnerable are the OpenSSL pkey command line application when using the\n\"-pubcheck\" option, as well as the OpenSSL genpkey command line application.\n\nThe OpenSSL SSL/TLS implementation is not affected by this issue.\n\nThe OpenSSL 3.0 and 3.1 FIPS providers are not affected by this issue.",
+      "modified": "2026-08-27T22:18:02.516259026Z",
+      "published": "2023-11-06T16:15:42.670Z",
+      "upstream": [
+        "CVE-2023-5678"
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://security.alpinelinux.org/vuln/CVE-2023-5678"
+        }
+      ],
+      "affected": [
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.15",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1w-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.16",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "1.1.1w-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.17",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.0.12-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.18",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.19",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.20",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.21",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.22",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.23",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        },
+        {
+          "package": {
+            "name": "openssl",
+            "ecosystem": "Alpine:v3.24",
+            "purl": "pkg:apk/alpine/openssl?arch=source"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "1.0.2"
+                },
+                {
+                  "fixed": "3.1.4-r1"
+                }
+              ]
+            }
+          ],
+          "ecosystem_specific": {},
+          "database_specific": {
+            "source": "https://storage.googleapis.com/cve-osv-conversion/alpine/ALPINE-CVE-2023-5678.json"
+          }
+        }
+      ],
+      "schema_version": "1.9.0",
+      "severity": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+        }
+      ]
+    }
+  ]
+}
