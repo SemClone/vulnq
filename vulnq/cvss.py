@@ -160,10 +160,10 @@ def coerce_score(value: object) -> Optional[float]:
     """Turn a source's score field into a float, or into nothing.
 
     Sources are inconsistent about the type. NVD and GitHub send a JSON number
-    that arrives as int or float depending on whether it has a fraction, OSV
-    sends a string, and VulnerableCode sends either. Comparing those raw is how
-    a str reaches cvss_to_severity and raises TypeError, which takes down the
-    whole source rather than the one advisory.
+    that arrives as int or float depending on whether it has a fraction, and
+    OSV sends a string. Comparing those raw is how a str reaches
+    cvss_to_severity and raises TypeError, which takes down the whole source
+    rather than the one advisory.
 
     Anything that is not a number in range comes back as None, because a score
     outside 0 to 10 is not a CVSS score whatever else it may be.

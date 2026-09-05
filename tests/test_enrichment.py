@@ -601,18 +601,18 @@ class TestCoreWiring:
         assert result.vulnerabilities[0].known_exploited is True
         assert result.enrichment[KEV_SOURCE].available is True
 
-    def test_enriches_findings_from_vulnerablecode(self, tmp_path, monkeypatch):
-        """It used to take its own path that returned early, and enrichment
+    def test_enriches_findings_from_a_single_source_query(self, tmp_path, monkeypatch):
+        """A source once took its own path that returned early, and enrichment
         had to be reached from both. There is one path now, and this pins that
-        a VulnerableCode-only query still gets enriched."""
+        a one-source query still gets enriched."""
         from vulnq.core import VulnerabilityQuery
 
         config = Configuration(
             kev_snapshot=write_kev_snapshot(tmp_path),
-            sources=[VulnerabilitySource.VULNERABLECODE],
+            sources=[VulnerabilitySource.OSV],
         )
         engine = VulnerabilityQuery(config=config)
-        client = engine._clients[VulnerabilitySource.VULNERABLECODE]
+        client = engine._clients[VulnerabilitySource.OSV]
 
         async def no_session():
             return None
@@ -628,7 +628,7 @@ class TestCoreWiring:
 
         assert result.vulnerabilities[0].known_exploited is True
         assert result.enrichment[KEV_SOURCE].available is True
-        assert result.sources_checked == [VulnerabilitySource.VULNERABLECODE]
+        assert result.sources_checked == [VulnerabilitySource.OSV]
 
     def test_env_configures_snapshots(self, tmp_path, monkeypatch):
         """A subprocess caller can only reach configuration through the env."""

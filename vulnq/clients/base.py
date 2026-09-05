@@ -173,10 +173,10 @@ class BaseClient(ABC):
         """Return CWE identifiers from whatever shape a source used.
 
         Sources disagree: OSV writes a list of strings under
-        database_specific.cwe_ids, VulnerableCode a list of objects with a
-        cwe_id that may be a bare integer, and NVD a nested weakness
-        description. Anything that is not a CWE identifier is dropped rather
-        than reported as one.
+        database_specific.cwe_ids, NVD a nested weakness description, and some
+        feeds a list of objects with a cwe_id that may be a bare integer.
+        Anything that is not a CWE identifier is dropped rather than reported
+        as one.
 
         Args:
             values: The source's weakness field, in any of its shapes
@@ -194,7 +194,7 @@ class BaseClient(ABC):
                 continue
             candidate = value.strip().upper()
             if candidate.isdigit():
-                # VulnerableCode writes the number alone: "89", not "CWE-89".
+                # A bare number is a CWE too: "89", not "CWE-89".
                 candidate = f"CWE-{candidate}"
             if not candidate.startswith("CWE-"):
                 continue

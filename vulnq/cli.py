@@ -11,7 +11,7 @@ from rich.text import Text
 from . import __version__
 from .core import NoSourcesConfiguredError, VulnerabilityQuery
 from .models import QueryResult, Severity, VersionMatch, VulnerabilitySource
-from .sources import UnknownSourceError, parse_disabled
+from .sources import UnknownSourceError, parse_disabled, retired_note
 
 console = Console()
 
@@ -301,28 +301,15 @@ def print_markdown(result: QueryResult):
 @click.option(
     "--sources",
     multiple=True,
-    help="Sources to query: osv, github, nvd, vulnerablecode. Repeatable.",
-)
-@click.option(
-    "--use-vulnerablecode",
-    is_flag=True,
-    help="Query only VulnerableCode (alias for --sources vulnerablecode)",
-)
-@click.option(
-    "--vulnerablecode-api-key",
-    envvar="VULNERABLECODE_API_KEY",
-    help="VulnerableCode API token, which raises its rate limit",
-)
-@click.option(
-    "--vulnerablecode-url",
-    envvar="VULNERABLECODE_URL",
-    help="VulnerableCode API root, for a self-hosted instance",
+    help="Sources to query: osv, github, nvd. Repeatable.",
 )
 @click.option(
     "--disable-source",
     "disable_source",
     multiple=True,
-    envvar="VULNQ_DISABLED_SOURCES",
+    # No envvar= here. load_config already reads VULNQ_DISABLED_SOURCES, and
+    # click reading it too parsed the same value twice - harmless while parsing
+    # was silent, but it printed the retired-name notice once per parse.
     help="Switch a source off whatever else selects it. Repeatable, or comma separated",
 )
 @click.option(
@@ -354,9 +341,6 @@ def main(
     min_severity: Optional[str],
     show_fixes: bool,
     sources: tuple,
-    use_vulnerablecode: bool,
-    vulnerablecode_api_key: Optional[str],
-    vulnerablecode_url: Optional[str],
     disable_source: tuple,
     kev_snapshot: Optional[str],
     epss_snapshot: Optional[str],
@@ -433,17 +417,21 @@ def main(
     except UnknownSourceError as e:
         console.print(f"[red]{e}[/red]")
         sys.exit(2)
-    if vulnerablecode_api_key:
-        config.vulnerablecode_api_key = vulnerablecode_api_key
-    if vulnerablecode_url:
-        config.vulnerablecode_url = vulnerablecode_url
-
     if disable_source:
         try:
-            config.disabled_sources = list(parse_disabled(",".join(disable_source)))
+            parsed = parse_disabled(",".join(disable_source))
         except UnknownSourceError as e:
             console.print(f"[red]{e}[/red]")
             sys.exit(2)
+
+        # The flag replaces whatever the environment disabled, so `--disable-source ""`
+        # clears that list and always has. What must not clear it is a flag that
+        # named something and resolved to nothing, which is what a flag naming
+        # only retired sources now does: that is meant to be a no-op, and
+        # switching a source back on in silence is the one thing it must not do.
+        named_something = any(piece.strip() for piece in ",".join(disable_source).split(","))
+        if parsed or not named_something:
+            config.disabled_sources = list(parsed)
 
     if kev_snapshot:
         config.kev_snapshot = kev_snapshot
@@ -457,20 +445,15 @@ def main(
             try:
                 parsed.append(VulnerabilitySource(name))
             except ValueError:
+                note = retired_note(name)
+                if note:
+                    console.print(f"[yellow]{note}[/yellow]")
                 valid = ", ".join(source.value for source in VulnerabilitySource)
                 console.print(f"[red]Unknown source '{name}'.[/red] Available sources: {valid}")
                 sys.exit(2)
 
         if parsed:
-            # VulnerableCode is an ordinary source now, so naming it here joins
-            # it to the others rather than replacing them.
             config.sources = parsed
-
-    # Applied after --sources on purpose. On the previous release the
-    # VulnerableCode switch won over any selection, and someone with it baked
-    # into a job should not quietly start querying something else.
-    if use_vulnerablecode:
-        config.sources = [VulnerabilitySource.VULNERABLECODE]
 
     # Initialize query engine
     try:

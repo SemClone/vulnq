@@ -6,7 +6,6 @@ from vulnq.clients import RateLimitError, UnsupportedQueryError
 from vulnq.clients.github import GitHubClient
 from vulnq.clients.nvd import NVDClient
 from vulnq.clients.osv import OSVClient
-from vulnq.clients.vulnerablecode import VulnerableCodeClient
 from vulnq.core import VulnerabilityQuery
 from vulnq.models import Configuration, VulnerabilitySource
 
@@ -48,12 +47,6 @@ class TestUnsupportedCombinations:
         """The GitHub Advisory Database has no CPE lookup."""
         with pytest.raises(UnsupportedQueryError):
             await GitHubClient().query_cpe(CPE)
-
-    @pytest.mark.asyncio
-    async def test_vulnerablecode_rejects_cpe(self):
-        """VulnerableCode is PURL-keyed."""
-        with pytest.raises(UnsupportedQueryError):
-            await VulnerableCodeClient().query_cpe(CPE)
 
     @pytest.mark.asyncio
     async def test_nvd_rejects_unmappable_purl(self):
@@ -132,20 +125,20 @@ class TestSkippedVersusFailed:
         # OSV answered, so the empty finding list is meaningful.
         assert result.is_conclusive is True
 
-    def test_vulnerablecode_failure_is_reported(self, monkeypatch):
-        """The single-source path needs the same honesty."""
-        fail_with(monkeypatch, ConnectionError("vulnerablecode unreachable"))
+    def test_a_single_source_failure_is_reported(self, monkeypatch):
+        """The one-source path needs the same honesty as the fan-out."""
+        fail_with(monkeypatch, ConnectionError("osv unreachable"))
 
         result = VulnerabilityQuery(
-            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+            config=Configuration(sources=[VulnerabilitySource.OSV])
         ).query(PURL)
 
         assert result.sources_checked == []
-        assert any("vulnerablecode" in error for error in result.errors)
+        assert any("osv" in error for error in result.errors)
         assert result.is_conclusive is False
 
-    def test_vulnerablecode_skip_is_not_an_error(self, monkeypatch):
-        """A CPE against VulnerableCode is unaskable, not broken."""
+    def test_a_single_source_skip_is_not_an_error(self, monkeypatch):
+        """A CPE against a PURL-keyed source is unaskable, not broken."""
 
         async def no_session(self):
             return None
@@ -154,11 +147,11 @@ class TestSkippedVersusFailed:
         monkeypatch.setattr("vulnq.clients.base.BaseClient.close_session", no_session)
 
         result = VulnerabilityQuery(
-            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
+            config=Configuration(sources=[VulnerabilitySource.OSV])
         ).query(CPE)
 
         assert result.sources_checked == []
-        assert "vulnerablecode" in result.sources_skipped
+        assert "osv" in result.sources_skipped
         assert result.errors == []
         assert result.is_conclusive is False
 

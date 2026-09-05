@@ -1,11 +1,12 @@
 """A source is declared once, and can be switched off without a code change.
 
-A source used to be named in seven files. VulnerableCode accounted for fifteen
-of those sites on its own, because it replaced the fan-out instead of joining
-it, and that special case is how three bugs lived unnoticed in its client.
+A source used to be named in seven files. One of them accounted for fifteen of
+those sites on its own, because it replaced the fan-out instead of joining it,
+and that special case is how three bugs lived unnoticed in its client.
 
-Upstreams are not stable ground: VulnerableCode's v1 API was withdrawn, and
-ClearlyDefined has changed owners. Turning a feed off should be configuration.
+Upstreams are not stable ground: that source's v1 API was withdrawn before the
+source itself was removed, and ClearlyDefined has changed owners. Turning a
+feed off should be configuration.
 """
 
 import datetime
@@ -45,14 +46,13 @@ def test_merge_priorities_are_distinct():
 
 
 def test_the_default_fanout_is_the_official_sources():
-    """VulnerableCode aggregates the others, so it is not queried unasked."""
+    """Every source that ships is queried unasked; there is no opt-in one."""
     assert set(DEFAULT_SOURCES) == {
         VulnerabilitySource.OSV,
         VulnerabilitySource.GITHUB,
         VulnerabilitySource.NVD,
     }
-    assert VulnerabilitySource.VULNERABLECODE in SELECTABLE_SOURCES
-    assert VulnerabilitySource.VULNERABLECODE not in DEFAULT_SOURCES
+    assert set(SELECTABLE_SOURCES) == set(DEFAULT_SOURCES)
 
 
 def test_the_default_configuration_queries_the_default_fanout():
@@ -60,26 +60,21 @@ def test_the_default_configuration_queries_the_default_fanout():
     assert set(engine._clients) == set(DEFAULT_SOURCES)
 
 
-class TestVulnerableCodeIsOrdinaryNow:
-    """It replaced every other source. That special case is gone."""
+class TestNoSourceReplacesTheFanOut:
+    """One source used to replace every other. That special case is gone."""
 
-    def test_it_can_be_combined_with_the_others(self):
-        """A combination the tool could not express before."""
+    def test_any_combination_can_be_expressed(self):
         engine = VulnerabilityQuery(
-            config=Configuration(
-                sources=[VulnerabilitySource.OSV, VulnerabilitySource.VULNERABLECODE]
-            )
+            config=Configuration(sources=[VulnerabilitySource.OSV, VulnerabilitySource.NVD])
         )
         assert set(engine._clients) == {
             VulnerabilitySource.OSV,
-            VulnerabilitySource.VULNERABLECODE,
+            VulnerabilitySource.NVD,
         }
 
-    def test_selecting_it_alone_queries_only_it(self):
-        engine = VulnerabilityQuery(
-            config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
-        )
-        assert set(engine._clients) == {VulnerabilitySource.VULNERABLECODE}
+    def test_selecting_one_queries_only_it(self):
+        engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.NVD]))
+        assert set(engine._clients) == {VulnerabilitySource.NVD}
 
     def test_there_is_no_separate_query_path_left(self):
         """It had its own, which duplicated the fan-out logic and drifted."""
@@ -150,7 +145,6 @@ class TestParsingTheDisableList:
     @pytest.mark.parametrize(
         "raw,expected",
         [
-            ("vulnerablecode", ["vulnerablecode"]),
             ("osv,github", ["osv", "github"]),
             (" osv , GITHUB ", ["osv", "github"]),
             ("OSV", ["osv"]),
@@ -190,7 +184,7 @@ def test_adding_a_source_needs_one_registry_entry():
     import pathlib
 
     core = (pathlib.Path(__file__).parent.parent / "vulnq" / "core.py").read_text()
-    for name in ("OSVClient(", "GitHubClient(", "NVDClient(", "VulnerableCodeClient("):
+    for name in ("OSVClient(", "GitHubClient(", "NVDClient("):
         assert name not in core, f"core.py builds {name} directly again"
     assert "FANOUT_SOURCES" not in core
     assert "source_priority" not in core
@@ -212,34 +206,25 @@ class TestTheCommandLineSurface:
             timeout=300,
         )
 
-    def test_the_use_vulnerablecode_alias_selects_vulnerablecode(self):
-        """Anyone with a token and a script depends on this flag.
+    def test_the_removed_alias_flag_fails_rather_than_being_ignored(self):
+        """A flag that selected a deleted source cannot quietly do nothing.
 
-        Asserting only that it runs and emits JSON pinned nothing: making the
-        alias mean OSV survived the whole suite. The claim is about which
-        source is queried, so that is what is checked.
+        The env var is forgiven because os.environ.get would skip it in
+        silence. A flag has no such problem: click refuses an option it does
+        not have, so the script that passes it stops rather than querying
+        something its author did not choose.
         """
         proc = self._run(["pkg:npm/left-pad@1.3.0", "--use-vulnerablecode", "-f", "json"])
-        assert "Traceback" not in proc.stderr, proc.stderr
-        combined = proc.stdout + proc.stderr
-        assert "vulnerablecode" in combined
-        # It queries only VulnerableCode, so no other source may appear.
-        assert "api.osv.dev" not in combined
-        assert "services.nvd.nist.gov" not in combined
 
-    def test_the_alias_still_wins_over_an_explicit_selection(self):
-        """It did on the previous release, and someone has it in a job env."""
-        proc = self._run(
-            ["pkg:npm/left-pad@1.3.0", "--use-vulnerablecode", "--sources", "osv", "-f", "json"]
-        )
+        assert proc.returncode == 2
         assert "Traceback" not in proc.stderr, proc.stderr
-        combined = proc.stdout + proc.stderr
-        assert "vulnerablecode" in combined
-        assert "api.osv.dev" not in combined
+        assert "--use-vulnerablecode" in proc.stderr
+        assert proc.stdout == ""
 
-    def test_the_use_vulnerablecode_environment_variable_still_selects_it(self):
-        """Nothing touched this variable, so removing its handling was free."""
-        import json
+    def test_the_environment_variable_that_selected_a_removed_source_stops_the_run(self):
+        """It meant "query only VulnerableCode". Answering from three sources
+        the caller never named, and calling that the same job, is worse than
+        stopping - so it exits 2 with the reason, and emits no document."""
         import os
         import subprocess
         import sys
@@ -252,12 +237,10 @@ class TestTheCommandLineSurface:
             timeout=300,
             env=env,
         )
+        assert proc.returncode == 2
         assert "Traceback" not in proc.stderr, proc.stderr
-        payload = json.loads(proc.stdout)
-        reported = set(payload["sources_checked"]) | set(payload["sources_skipped"])
-        reported |= {e.split(":")[0] for e in payload["errors"]}
-        assert "vulnerablecode" in reported
-        assert "osv" not in reported
+        assert "removed in 2.0" in proc.stdout + proc.stderr
+        assert proc.stdout.strip().startswith("USE_VULNERABLECODE") or proc.stdout == ""
 
     def test_disabling_a_source_from_the_command_line_runs(self):
         proc = self._run(
@@ -323,28 +306,24 @@ def test_the_configuration_default_follows_the_registry():
 
 
 def test_merging_two_records_never_lowers_a_severity():
-    """VulnerableCode-only results are deduplicated now, where they used to be
-    returned raw, so this path is newly reachable for those users.
-
-    Two records for one advisory with no score to derive from simply disagree.
-    Taking the first meant a HIGH could vanish into a LOW and then be removed
-    by a severity filter.
-    """
+    """Two records for one advisory with no score to derive from simply
+    disagree. Taking the first meant a HIGH could vanish into a LOW and then be
+    removed by a severity filter."""
     from vulnq.core import VulnerabilityQuery
     from vulnq.models import Configuration, Severity, Vulnerability, VulnerabilitySource
 
     def record(vid, severity):
         return Vulnerability(
             id=vid,
-            source=VulnerabilitySource.VULNERABLECODE,
+            source=VulnerabilitySource.OSV,
             summary="x",
             severity=severity,
             aliases=["CVE-2021-1"],
         )
 
-    engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.VULNERABLECODE]))
+    engine = VulnerabilityQuery(config=Configuration(sources=[VulnerabilitySource.OSV]))
     merged = engine._deduplicate_vulnerabilities(
-        [record("VCID-1", Severity.LOW), record("VCID-2", Severity.HIGH)]
+        [record("OSV-1", Severity.LOW), record("OSV-2", Severity.HIGH)]
     )
     assert len(merged) == 1
     assert merged[0].severity is Severity.HIGH

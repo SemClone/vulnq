@@ -55,7 +55,6 @@ class VulnerabilitySource(str, Enum):
     OSV = "osv"
     GITHUB = "github"
     NVD = "nvd"
-    VULNERABLECODE = "vulnerablecode"
 
 
 # One ordering for severity, used by the filter and by the result sort. Two
@@ -272,12 +271,6 @@ class Configuration(BaseModel):
     nvd_api_key: Optional[str] = Field(None, description="NVD API key")
     max_concurrent: int = Field(5, description="Max concurrent requests per source")
     timeout: int = Field(30, description="Request timeout in seconds")
-    vulnerablecode_api_key: Optional[str] = Field(
-        None, description="VulnerableCode API token, which raises its rate limit"
-    )
-    vulnerablecode_url: Optional[str] = Field(
-        None, description="VulnerableCode API root, for a self-hosted instance"
-    )
     disabled_sources: List[VulnerabilitySource] = Field(
         default_factory=list,
         description=(

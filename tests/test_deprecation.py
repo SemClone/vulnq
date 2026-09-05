@@ -1,11 +1,17 @@
-"""A source on the way out has to say so, once, on the right stream.
+"""Retiring a source, and the two notices that go with it.
 
-The whole reason VulnerableCode gets a deprecation release rather than a
-straight delete is USE_VULNERABLECODE=true: it is read with os.environ.get, so
-when the source goes it starts being ignored in silence and a job that thought
-it was querying one thing quietly queries another. A warning nobody sees is the
-same outcome, so what is pinned here is that it reaches every path that can
-select the source, and that it does not reach stdout.
+A source on the way out has to say so, once, on the right stream. Nothing is
+deprecated right now - VulnerableCode was the first and only user of that
+machinery, and 2.0 deleted it - so what is pinned here is that the machinery
+still works for whoever needs it next, and that the name it left behind is
+handled rather than tripped over.
+
+The name matters because of how it was read. USE_VULNERABLECODE=true and
+VULNQ_DISABLED_SOURCES=vulnerablecode both come from os.environ.get, so once
+the source is gone they are skipped in silence and a job that believes it is
+querying one thing quietly queries another. Silence is exactly what the
+deprecation release was written to avoid, and deleting the source must not
+reintroduce it.
 """
 
 import io
@@ -18,10 +24,17 @@ from click.testing import CliRunner
 from vulnq.cli import main
 from vulnq.core import VulnerabilityQuery
 from vulnq.models import Configuration, VulnerabilitySource
-from vulnq.sources import BY_SOURCE, REGISTRY, deprecation_warning
-
-DEPRECATED = [spec.source for spec in REGISTRY if spec.removed_in]
-CURRENT = [spec.source for spec in REGISTRY if not spec.removed_in]
+from vulnq.sources import (
+    BY_SOURCE,
+    REGISTRY,
+    RETIRED_SOURCES,
+    SourceSpec,
+    RetiredSourceError,
+    UnknownSourceError,
+    deprecation_warning,
+    parse_disabled,
+    retired_note,
+)
 
 
 def _stderr_of(config):
@@ -36,79 +49,315 @@ def _stderr_of(config):
     return captured.getvalue()
 
 
-class TestTheNoticeItself:
-    def test_vulnerablecode_is_the_source_being_retired(self):
-        """If this changes, the evaluation and the changelog are stale too."""
-        assert DEPRECATED == [VulnerabilitySource.VULNERABLECODE]
-        assert BY_SOURCE[VulnerabilitySource.VULNERABLECODE].removed_in == "2.0"
+def _stderr_while(call):
+    """Return only what a call wrote to stderr."""
+    captured = io.StringIO()
+    original = sys.stderr
+    sys.stderr = captured
+    try:
+        call()
+    finally:
+        sys.stderr = original
+    return captured.getvalue()
 
-    def test_it_names_the_source_and_the_release_that_removes_it(self):
-        warning = deprecation_warning(VulnerabilitySource.VULNERABLECODE)
+
+def _deprecate(monkeypatch, source, removed_in="9.9", note="use something else"):
+    """Put a source on the way out, for the length of one test."""
+    spec = BY_SOURCE[source]
+    monkeypatch.setitem(
+        BY_SOURCE,
+        source,
+        SourceSpec(
+            source=spec.source,
+            build=spec.build,
+            in_default_fanout=spec.in_default_fanout,
+            merge_priority=spec.merge_priority,
+            removed_in=removed_in,
+            deprecation_note=note,
+        ),
+    )
+
+
+class TestTheDeprecationMachineryOutlivedItsFirstUser:
+    """`removed_in` and `deprecation_note` are how the next source goes."""
+
+    def test_a_spec_with_a_removal_release_produces_a_notice(self, monkeypatch):
+        _deprecate(monkeypatch, VulnerabilitySource.OSV)
+        warning = deprecation_warning(VulnerabilitySource.OSV)
+
         assert warning is not None
-        assert "vulnerablecode" in warning
-        assert "2.0" in warning
-
-    def test_it_says_what_to_use_instead(self):
-        """A warning that only says stop is one the reader cannot act on."""
-        warning = deprecation_warning(VulnerabilitySource.VULNERABLECODE)
         assert "osv" in warning
+        assert "9.9" in warning
 
-    @pytest.mark.parametrize("source", CURRENT)
-    def test_a_source_that_is_staying_has_no_notice(self, source):
-        assert deprecation_warning(source) is None
+    def test_the_notice_says_what_to_do_instead(self, monkeypatch):
+        """A warning that only says stop is one the reader cannot act on."""
+        _deprecate(monkeypatch, VulnerabilitySource.NVD, note="use github")
 
+        assert "use github" in deprecation_warning(VulnerabilitySource.NVD)
 
-class TestEveryPathThatSelectsItWarns:
-    def test_a_library_caller_is_told(self):
+    def test_a_note_without_a_removal_release_says_nothing(self, monkeypatch):
+        """`deprecation_note` is pointless without `removed_in`, and silent."""
+        _deprecate(monkeypatch, VulnerabilitySource.OSV, removed_in=None, note="ignored")
+
+        assert deprecation_warning(VulnerabilitySource.OSV) is None
+
+    def test_the_engine_reaches_a_library_caller_too(self, monkeypatch):
         """Configuration(sources=[...]) reaches none of the CLI surfaces, so
         warning at those would leave this caller the only one told nothing."""
-        assert "deprecated" in _stderr_of(
-            Configuration(sources=[VulnerabilitySource.VULNERABLECODE])
-        )
+        _deprecate(monkeypatch, VulnerabilitySource.OSV)
 
-    def test_the_use_vulnerablecode_environment_variable_is_told(self, monkeypatch):
-        """The surface the deprecation release exists for: it is read with
-        os.environ.get, so after removal it fails silently."""
-        monkeypatch.setenv("USE_VULNERABLECODE", "true")
-        assert "deprecated" in _stderr_of(VulnerabilityQuery.load_config())
+        assert "deprecated" in _stderr_of(Configuration(sources=[VulnerabilitySource.OSV]))
 
-    def test_the_default_fanout_is_quiet(self):
-        """Nobody asked for it, so nobody needs telling."""
-        assert _stderr_of(Configuration()) == ""
+    def test_it_is_said_once_per_engine(self, monkeypatch):
+        _deprecate(monkeypatch, VulnerabilitySource.OSV)
+        config = Configuration(sources=[VulnerabilitySource.OSV, VulnerabilitySource.NVD])
 
-    def test_a_source_switched_off_does_not_warn(self):
-        """It was named and then disabled, so it is not being queried and
-        there is nothing to stop doing."""
-        config = Configuration(
-            sources=[VulnerabilitySource.VULNERABLECODE, VulnerabilitySource.OSV],
-            disabled_sources=[VulnerabilitySource.VULNERABLECODE],
-        )
-        assert _stderr_of(config) == ""
-
-    def test_it_is_said_once_per_engine(self):
-        config = Configuration(
-            sources=[VulnerabilitySource.VULNERABLECODE, VulnerabilitySource.OSV]
-        )
         assert _stderr_of(config).count("deprecated") == 1
 
+    def test_a_source_switched_off_does_not_warn(self, monkeypatch):
+        """It was named and then disabled, so it is not being queried and
+        there is nothing to stop doing."""
+        _deprecate(monkeypatch, VulnerabilitySource.OSV)
+        config = Configuration(
+            sources=[VulnerabilitySource.OSV, VulnerabilitySource.NVD],
+            disabled_sources=[VulnerabilitySource.OSV],
+        )
 
-def test_the_warning_stays_off_stdout():
+        assert _stderr_of(config) == ""
+
+
+class TestNothingIsOnTheWayOutRightNow:
+    @pytest.mark.parametrize("spec", REGISTRY, ids=lambda s: s.source.value)
+    def test_no_shipped_source_carries_a_removal_release(self, spec):
+        assert spec.removed_in is None
+        assert deprecation_warning(spec.source) is None
+
+    def test_the_default_fanout_is_quiet(self):
+        assert _stderr_of(Configuration()) == ""
+
+
+class TestTheNameARetiredSourceLeftBehind:
+    def test_vulnerablecode_is_the_name_that_was_retired(self):
+        """If this changes, the changelog and the migration note are stale."""
+        assert RETIRED_SOURCES == {"vulnerablecode": "2.0"}
+
+    def test_the_notice_names_the_release_and_what_covers_it_now(self):
+        note = retired_note("vulnerablecode")
+
+        assert "2.0" in note
+        assert "osv" in note
+
+    def test_a_name_that_was_never_a_source_gets_no_notice(self):
+        assert retired_note("gitub") is None
+
+    def test_disabling_it_is_a_no_op_rather_than_a_failure(self):
+        """A job with it baked in is asking for something already true."""
+        assert parse_disabled("vulnerablecode") == ()
+
+    def test_disabling_it_alongside_a_real_source_still_disables_that_one(self):
+        assert parse_disabled("vulnerablecode,nvd") == (VulnerabilitySource.NVD,)
+
+    def test_it_is_not_selectable_again_by_the_back_door(self):
+        """Forgiven in the disable list is not the same as still a source."""
+        assert "vulnerablecode" not in {s.value for s in VulnerabilitySource}
+
+    def test_a_typo_is_still_a_typo(self):
+        with pytest.raises(UnknownSourceError):
+            parse_disabled("gitub")
+
+    def test_the_environment_variable_that_selected_it_is_refused(self, monkeypatch):
+        """It meant "query only VulnerableCode", which cannot be honoured.
+
+        The surface the deprecation release existed for: os.environ.get would
+        skip it in silence, and the job would answer from three sources its
+        author never named while reporting nothing had changed.
+        """
+        monkeypatch.setenv("USE_VULNERABLECODE", "true")
+
+        with pytest.raises(RetiredSourceError) as excinfo:
+            VulnerabilityQuery.load_config()
+
+        assert "removed in 2.0" in str(excinfo.value)
+
+    def test_refusing_it_is_caught_by_the_handler_that_already_exits_two(
+        self, monkeypatch
+    ):
+        """RetiredSourceError subclasses UnknownSourceError so the CLI's
+        existing handler gives it the same exit code as any bad source name."""
+        monkeypatch.setenv("USE_VULNERABLECODE", "true")
+
+        with pytest.raises(UnknownSourceError):
+            VulnerabilityQuery.load_config()
+
+    def test_asking_to_query_it_and_asking_to_stop_are_not_the_same_request(self):
+        """The whole rule, in one place. "Stop querying it" is already true;
+        "query it" cannot be honoured at all."""
+        assert parse_disabled("vulnerablecode") == ()
+
+        result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
+        assert result.exit_code == 2
+
+    def test_an_empty_disable_flag_still_clears_what_the_environment_disabled(self):
+        """Forgiving a retired name must not change what an empty flag means.
+
+        The flag replaces the environment's list, so `--disable-source ""` is
+        how a job overrides a baked-in variable to disable nothing.
+        """
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        skipped = json.loads(proc.stdout)["sources_skipped"]
+        assert "disabled" not in skipped.get("github", "")
+
+    def test_a_typo_beside_a_retired_name_is_not_told_anything_was_ignored(self):
+        """Nothing was ignored - the run aborts. Saying otherwise describes a
+        run that did not happen."""
+        result = CliRunner().invoke(
+            main, ["pkg:npm/x@1.0.0", "--disable-source", "vulnerablecode,gitub"]
+        )
+
+        assert result.exit_code == 2
+        assert "gitub" in result.output
+        assert "Nothing was disabled" not in result.output
+
+    def test_the_notice_is_said_once_per_run_not_once_per_parse(self):
+        """VULNQ_DISABLED_SOURCES was read by load_config and by click, so the
+        value was parsed twice and the notice printed twice."""
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "vulnq.cli", "pkg:npm/x@1.0.0", "--sources", "osv"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "vulnerablecode"},
+        )
+
+        assert proc.stderr.count("removed in 2.0") == 1
+
+    def test_the_disable_list_still_disables_a_real_source_from_the_environment(self):
+        """Reading it in one place must not stop it being read at all."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "vulnq.cli", "pkg:npm/x@1.0.0", "-f", "json"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        assert "github" in json.loads(proc.stdout)["sources_skipped"]
+
+    def test_naming_it_on_the_flag_does_not_switch_a_real_source_back_on(self):
+        """The flag replaces whatever the environment disabled, so a flag that
+        parses to nothing would re-enable it - in silence, which is the outcome
+        UnknownSourceError exists to prevent."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "vulnerablecode",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        assert "github" in json.loads(proc.stdout)["sources_skipped"]
+
+    def test_naming_a_real_source_on_the_flag_still_replaces_the_environment(self):
+        """Forgiving a retired name must not change what the flag means."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "nvd",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        skipped = json.loads(proc.stdout)["sources_skipped"]
+        assert "nvd" in skipped
+        assert "disabled" not in skipped.get("github", "")
+
+    def test_selecting_it_by_name_says_it_was_removed_not_that_it_never_was(self):
+        """"Unknown source" alone reads as a typo, and sends the reader looking
+        for a spelling mistake in a name they spelled correctly."""
+        result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
+
+        assert result.exit_code == 2
+        assert "removed in 2.0" in result.output
+        assert "Unknown source 'vulnerablecode'" in result.output
+        assert "osv" in result.output
+
+
+def test_the_notice_stays_off_stdout():
     """A caller reading --format json on stdout would otherwise get a warning
     spliced into the document, which is worse than the problem it reports."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
+            "import os;"
+            "os.environ['VULNQ_DISABLED_SOURCES'] = 'vulnerablecode';"
             "from vulnq.core import VulnerabilityQuery;"
-            "from vulnq.models import Configuration, VulnerabilitySource;"
-            "VulnerabilityQuery(config=Configuration("
-            "sources=[VulnerabilitySource.VULNERABLECODE]))",
+            "VulnerabilityQuery(config=VulnerabilityQuery.load_config())",
         ],
         capture_output=True,
         text=True,
     )
+
     assert result.stdout == ""
-    assert "deprecated" in result.stderr
+    assert "removed in 2.0" in result.stderr
 
 
 class TestAnUnknownSourceFailsTheSameWayFromEitherRoute:
@@ -137,35 +386,21 @@ class TestAnUnknownSourceFailsTheSameWayFromEitherRoute:
         assert "Traceback" not in result.output
 
 
-class TestRemovingItWouldNotCreateAGap:
-    """The two facts the removal decision rests on that the tree can check.
-    Kept from the evaluation's own tests, which went with the document."""
-
-    def test_it_never_decides_an_overlap(self):
-        """Lower priority wins, so the largest number is the source that
-        defers to every other. It aggregates them; it does not add to them."""
-        from vulnq.sources import MERGE_PRIORITY
-
-        others = [
-            priority
-            for source, priority in MERGE_PRIORITY.items()
-            if source is not VulnerabilitySource.VULNERABLECODE
-        ]
-        assert MERGE_PRIORITY[VulnerabilitySource.VULNERABLECODE] > max(others)
+class TestRemovingItDidNotCreateAGap:
+    """The fact the removal decision rested on that the tree can still check:
+    the distro PURLs it declined before the request was made - which is what
+    opened issue #53 - are accepted by OSV, and OSV is in the default fan-out.
+    """
 
     @pytest.mark.parametrize(
         "purl",
         [
             "pkg:deb/debian/curl@7.64.0-4",
             "pkg:rpm/redhat/openssl@1.1.1k-7.el8_6",
-            "pkg:apk/alpine/openssl@1.1.1q-r0",
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
         ],
     )
-    def test_osv_accepts_the_distro_purls_vulnerablecode_refuses(self, purl, monkeypatch):
-        """VulnerableCode declines these before the request is made, which is
-        what opened issue #53. OSV does not, so the same query reaches an API
-        that answers deb and rpm - and OSV is in the default fan-out, so
-        removing VulnerableCode takes nothing away here."""
+    def test_osv_accepts_the_distro_purls(self, purl, monkeypatch):
         import asyncio
 
         from vulnq.clients.osv import OSVClient

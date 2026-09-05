@@ -1,8 +1,8 @@
 """A declared field that is always empty says the wrong thing.
 
-`cwe_ids` was hardcoded to an empty list in the OSV and VulnerableCode
-clients, under a comment claiming OSV does not provide them. OSV does: the
-classification sits in `database_specific.cwe_ids`, which is where
+`cwe_ids` was hardcoded to an empty list in more than one client, under a
+comment claiming OSV does not provide them. OSV does: the classification sits
+in `database_specific.cwe_ids`, which is where
 GitHub-sourced advisories put it. Always empty, the field read as "this
 advisory has no classification" rather than "we did not extract one".
 
@@ -16,7 +16,6 @@ import pytest
 
 from vulnq.clients.base import BaseClient
 from vulnq.clients.osv import OSVClient
-from vulnq.clients.vulnerablecode import VulnerableCodeClient
 
 
 @pytest.mark.parametrize(
@@ -38,8 +37,8 @@ from vulnq.clients.vulnerablecode import VulnerableCodeClient
     ],
 )
 def test_every_shape_a_source_uses_is_read(raw, expected):
-    """OSV writes strings, VulnerableCode objects whose cwe_id may be a bare
-    integer, GitHub objects with a cweId. Anything that is not a CWE
+    """OSV writes strings and GitHub objects with a cweId; other feeds write
+    objects whose cwe_id may be a bare integer. Anything that is not a CWE
     identifier is dropped rather than reported as one."""
     assert BaseClient._normalize_cwe_ids(raw) == expected
 
