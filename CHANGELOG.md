@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both notices go to stderr, so `--format json` on stdout stays a document
 
 ### Fixed
+- `--disable-source vulnerablecode` no longer switches a real source back on.
+  The flag replaces whatever the environment disabled, and a flag naming only
+  retired names parses to nothing, so it emptied the list instead of being the
+  no-op it is meant to be — `VULNQ_DISABLED_SOURCES=github` plus
+  `--disable-source vulnerablecode` queried GitHub. Silently re-enabling a
+  source somebody switched off is exactly the outcome the unknown-source error
+  exists to prevent
 - `VULNQ_DISABLED_SOURCES` is read in one place. `load_config()` read it and
   click read it again through an `envvar=` on `--disable-source`, so the value
   was parsed twice on every CLI run. That was harmless while parsing was

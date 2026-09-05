@@ -419,10 +419,18 @@ def main(
         sys.exit(2)
     if disable_source:
         try:
-            config.disabled_sources = list(parse_disabled(",".join(disable_source)))
+            parsed = parse_disabled(",".join(disable_source))
         except UnknownSourceError as e:
             console.print(f"[red]{e}[/red]")
             sys.exit(2)
+
+        # The flag replaces whatever the environment disabled, so an empty
+        # parse would re-enable it. A flag that names only retired sources
+        # parses to nothing and is supposed to be a no-op - switching a source
+        # back on is the one thing it must not do, and it would do it in
+        # silence, which is what UnknownSourceError exists to prevent.
+        if parsed:
+            config.disabled_sources = list(parsed)
 
     if kev_snapshot:
         config.kev_snapshot = kev_snapshot

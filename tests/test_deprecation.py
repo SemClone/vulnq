@@ -215,6 +215,62 @@ class TestTheNameARetiredSourceLeftBehind:
 
         assert "github" in json.loads(proc.stdout)["sources_skipped"]
 
+    def test_naming_it_on_the_flag_does_not_switch_a_real_source_back_on(self):
+        """The flag replaces whatever the environment disabled, so a flag that
+        parses to nothing would re-enable it - in silence, which is the outcome
+        UnknownSourceError exists to prevent."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "vulnerablecode",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        assert "github" in json.loads(proc.stdout)["sources_skipped"]
+
+    def test_naming_a_real_source_on_the_flag_still_replaces_the_environment(self):
+        """Forgiving a retired name must not change what the flag means."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "vulnq.cli",
+                "pkg:npm/x@1.0.0",
+                "--disable-source",
+                "nvd",
+                "-f",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        skipped = json.loads(proc.stdout)["sources_skipped"]
+        assert "nvd" in skipped
+        assert "disabled" not in skipped.get("github", "")
+
     def test_selecting_it_by_name_fails_and_lists_what_is_left(self):
         result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
 
