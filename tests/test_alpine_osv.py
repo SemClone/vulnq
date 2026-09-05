@@ -210,3 +210,97 @@ class TestPaginationStillWorksOnTheRewrittenQuery:
         asyncio.run(client.query_purl("pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16"))
 
         assert "page_token" not in sent[0]
+
+
+class TestOneRecordCoversManyPackagesAndBranches:
+    """ALPINE-CVE-2022-4304 carries thirteen affected entries in the fixture:
+    openssl across eleven Alpine branches, and openssl3 across two. The answer
+    to "openssl on 3.16" is one of those, not all thirteen flattened together.
+    """
+
+    def _openssl_3_16(self):
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            recorded("alpine_openssl_v3_16"),
+        )
+        return next(v for v in vulns if v.id == "ALPINE-CVE-2022-4304")
+
+    def test_the_fix_reported_is_the_one_for_the_branch_asked_about(self):
+        assert self._openssl_3_16().fixed_versions == ["1.1.1t-r0"]
+
+    def test_a_sibling_packages_fix_does_not_ride_along(self):
+        """openssl3 is fixed in 3.0.8-r0. Nobody asked about openssl3."""
+        assert "3.0.8-r0" not in self._openssl_3_16().fixed_versions
+
+    def test_a_later_branchs_fix_does_not_ride_along_either(self):
+        """openssl on Alpine:v3.17 is fixed in 3.0.8-r0. Also not the question."""
+        vuln = self._openssl_3_16()
+        assert len(vuln.fixed_versions) == 1
+
+    def test_every_record_in_the_recorded_answer_names_one_fix(self):
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            recorded("alpine_openssl_v3_16"),
+        )
+
+        assert [len(v.fixed_versions) for v in vulns] == [1] * 9
+
+
+class TestScopingOnlyAppliesWhereTheQueryNamedOne:
+    RECORD = {
+        "id": "OSV-1",
+        "affected": [
+            {
+                "package": {"name": "openssl", "ecosystem": "Alpine:v3.16"},
+                "ranges": [{"events": [{"introduced": "1.0.2"}, {"fixed": "1.1.1t-r0"}]}],
+            },
+            {
+                "package": {"name": "openssl3", "ecosystem": "Alpine:v3.16"},
+                "ranges": [{"events": [{"introduced": "0"}, {"fixed": "3.0.8-r0"}]}],
+            },
+        ],
+    }
+
+    def test_a_purl_query_still_reads_every_entry(self):
+        """No scope means no filter: deb, rpm, npm and pypi are untouched."""
+        _, vulns, _ = run("pkg:npm/example@1.0.0", {"vulns": [self.RECORD]})
+
+        assert vulns[0].fixed_versions == ["1.1.1t-r0", "3.0.8-r0"]
+
+    def test_an_alpine_query_reads_only_its_own_entry(self):
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            {"vulns": [self.RECORD]},
+        )
+
+        assert vulns[0].fixed_versions == ["1.1.1t-r0"]
+
+    def test_a_record_naming_nothing_we_asked_for_keeps_all_of_it(self):
+        """Under-reporting a fix is worse than reporting one too many.
+
+        A record that came back for this query but names the package some way
+        this does not recognise is a shape we do not understand, so it falls
+        back to the behaviour every other ecosystem still gets.
+        """
+        record = {
+            "id": "OSV-2",
+            "affected": [
+                {
+                    "package": {"name": "openssl", "ecosystem": "Alpine:v3.99"},
+                    "ranges": [{"events": [{"fixed": "9.9.9-r0"}]}],
+                }
+            ],
+        }
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16", {"vulns": [record]}
+        )
+
+        assert vulns[0].fixed_versions == ["9.9.9-r0"]
+
+    def test_a_record_with_no_affected_list_at_all_parses(self):
+        _, vulns, _ = run(
+            "pkg:apk/alpine/openssl@1.1.1q-r0?distro=alpine-3.16",
+            {"vulns": [{"id": "OSV-3"}]},
+        )
+
+        assert vulns[0].fixed_versions == []

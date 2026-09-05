@@ -86,7 +86,8 @@ class OSVClient(BaseClient):
         page_token: Optional[str] = None
 
         # Alpine is asked by name and branch; everything else by PURL.
-        query = self._alpine_query(purl) or {"package": {"purl": purl}}
+        alpine = self._alpine_query(purl)
+        query = alpine or {"package": {"purl": purl}}
 
         for _ in range(MAX_PAGES):
             data: Dict[str, Any] = dict(query)
@@ -110,7 +111,13 @@ class OSVClient(BaseClient):
                 f"the rest were not fetched (page limit of {MAX_PAGES} reached)"
             )
 
-        return self._parse_vulns(vulns, self._queried_version(purl), self._ecosystem_of(purl))
+        return self._parse_vulns(
+            vulns,
+            self._queried_version(purl),
+            self._ecosystem_of(purl),
+            # Only the Alpine path knows both halves of what it asked for.
+            scope=alpine["package"] if alpine else None,
+        )
 
     def _alpine_query(self, purl: str) -> Optional[Dict[str, Any]]:
         """Return an Alpine name-and-branch query body for an apk PURL.
@@ -172,12 +179,16 @@ class OSVClient(BaseClient):
         vulns: List[Dict[str, Any]],
         queried_version: Optional[str] = None,
         ecosystem: Optional[str] = None,
+        scope: Optional[Dict[str, str]] = None,
     ) -> List[Vulnerability]:
         """Turn OSV records into Vulnerability objects.
 
         Args:
             vulns: Records, possibly gathered across several pages
             queried_version: Version pinned by the query, if any
+            ecosystem: PURL type, which decides how version lists are ordered
+            scope: The OSV name and ecosystem the query named, when it named
+                one, so a record covering several can be read down to it
 
         Returns:
             List of Vulnerability objects
@@ -191,7 +202,7 @@ class OSVClient(BaseClient):
 
         for vuln_data in vulns:
             try:
-                vuln = self._parse_vulnerability(vuln_data, queried_version, ecosystem)
+                vuln = self._parse_vulnerability(vuln_data, queried_version, ecosystem, scope)
                 if vuln:
                     vulnerabilities.append(vuln)
                 else:
@@ -218,17 +229,61 @@ class OSVClient(BaseClient):
 
         return vulnerabilities
 
+    @staticmethod
+    def _affected_in_scope(
+        data: Dict[str, Any], scope: Optional[Dict[str, str]]
+    ) -> List[Dict[str, Any]]:
+        """Return the affected entries the query actually asked about.
+
+        One OSV record covers every package and branch an advisory touches.
+        ALPINE-CVE-2022-4304 carries thirteen entries: openssl across eleven
+        Alpine branches, and openssl3 across two. Reading all of them into one
+        answer reports the fix for a package nobody asked about - openssl on
+        Alpine:v3.16 is fixed in 1.1.1t-r0, and flattening added openssl3's
+        3.0.8-r0 beside it.
+
+        Args:
+            data: A raw OSV record
+            scope: The OSV name and ecosystem the query named, or None when the
+                query went out as a PURL and the record's own naming is the
+                only thing there is to go on
+
+        Returns:
+            The matching entries, or all of them when nothing matched
+        """
+        affected = data.get("affected") or []
+        if not scope:
+            return affected
+
+        in_scope = [
+            entry
+            for entry in affected
+            if (entry.get("package") or {}).get("name") == scope.get("name")
+            and (entry.get("package") or {}).get("ecosystem") == scope.get("ecosystem")
+        ]
+
+        # A record that answered the query but names the package differently in
+        # its own affected list is a shape this does not understand. Reporting
+        # every range it carries is what happened before and is wrong in the
+        # direction of noise; reporting none would be wrong in the direction of
+        # a missing fix.
+        return in_scope or affected
+
     def _parse_vulnerability(
         self,
         data: Dict[str, Any],
         queried_version: Optional[str] = None,
         ecosystem: Optional[str] = None,
+        scope: Optional[Dict[str, str]] = None,
     ) -> Optional[Vulnerability]:
         """Parse a single vulnerability entry.
 
         Args:
             data: Raw vulnerability data
             queried_version: Version pinned by the query, if any
+            ecosystem: PURL type, which decides how version lists are ordered
+            scope: The OSV name and ecosystem the query named, when it named
+                one, so a record covering several can be read down to it
 
         Returns:
             Vulnerability object or None if parsing fails
@@ -299,7 +354,7 @@ class OSVClient(BaseClient):
         affected_versions = []
         fixed_versions = []
 
-        for affected in data.get("affected", []):
+        for affected in self._affected_in_scope(data, scope):
             # Get affected version ranges
             for range_info in affected.get("ranges", []):
                 for event in range_info.get("events", []):

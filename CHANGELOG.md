@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OSV to fall back to, so an empty answer there is a gap in the question, not a
   clean package
 
+- An Alpine answer now reports the fix for the package and branch that was
+  asked about. One OSV record covers every package and branch an advisory
+  touches — `ALPINE-CVE-2022-4304` carries thirteen, `openssl` across eleven
+  Alpine branches and `openssl3` across two — and reading all of them into one
+  answer put `openssl3`'s `3.0.8-r0` beside `openssl`'s `1.1.1t-r0` under
+  `--show-fixes`. A record whose own naming does not match the query still
+  reports everything it carries, because a missing fix is worse than a noisy
+  one
+
+  This narrowing applies only where the query named a package and an
+  ecosystem, which today is the Alpine path alone. A `deb` or `rpm` PURL goes
+  out as a coordinate with no suite in it, so there is nothing to narrow to and
+  those answers still carry every suite's fix — `curl@7.64.0-4` reports two
+  fixed versions on 32 of its 139 records. That is unchanged, and known
+
   `pkg:apk/wolfi` and `pkg:apk/chainguard` are unchanged: both resolve through
   OSV's PURL index today, and their advisories sit under a bare `Wolfi` and
   `Chainguard` with no branch to name. Passing `distro=` on a `deb` PURL is
