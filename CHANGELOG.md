@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Both notices go to stderr, so `--format json` on stdout stays a document
 
+### Fixed
+- `VULNQ_DISABLED_SOURCES` is read in one place. `load_config()` read it and
+  click read it again through an `envvar=` on `--disable-source`, so the value
+  was parsed twice on every CLI run. That was harmless while parsing was
+  silent; it printed the retirement notice twice
+
 ### Changed
 - `SourceSpec.removed_in` and `deprecation_note` stay. They are how the next
   source gets deprecated, and the machinery should outlive its first user.

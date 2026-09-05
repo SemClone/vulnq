@@ -181,6 +181,40 @@ class TestTheNameARetiredSourceLeftBehind:
 
         assert VulnerabilitySource.OSV in (config.sources or [])
 
+    def test_the_notice_is_said_once_per_run_not_once_per_parse(self):
+        """VULNQ_DISABLED_SOURCES was read by load_config and by click, so the
+        value was parsed twice and the notice printed twice."""
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "vulnq.cli", "pkg:npm/x@1.0.0", "--sources", "osv"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "vulnerablecode"},
+        )
+
+        assert proc.stderr.count("removed in 2.0") == 1
+
+    def test_the_disable_list_still_disables_a_real_source_from_the_environment(self):
+        """Reading it in one place must not stop it being read at all."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "vulnq.cli", "pkg:npm/x@1.0.0", "-f", "json"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "VULNQ_DISABLED_SOURCES": "github"},
+        )
+
+        assert "github" in json.loads(proc.stdout)["sources_skipped"]
+
     def test_selecting_it_by_name_fails_and_lists_what_is_left(self):
         result = CliRunner().invoke(main, ["pkg:npm/x@1.0.0", "--sources", "vulnerablecode"])
 

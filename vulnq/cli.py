@@ -307,7 +307,9 @@ def print_markdown(result: QueryResult):
     "--disable-source",
     "disable_source",
     multiple=True,
-    envvar="VULNQ_DISABLED_SOURCES",
+    # No envvar= here. load_config already reads VULNQ_DISABLED_SOURCES, and
+    # click reading it too parsed the same value twice - harmless while parsing
+    # was silent, but it printed the retired-name notice once per parse.
     help="Switch a source off whatever else selects it. Repeatable, or comma separated",
 )
 @click.option(
