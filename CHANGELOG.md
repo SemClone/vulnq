@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-13
+
 ### Fixed
 - HTTP requests now honour `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (#69).
   aiohttp only reads proxy settings from the environment when its session is
