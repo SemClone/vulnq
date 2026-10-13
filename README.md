@@ -239,6 +239,13 @@ export VULNQ_DISABLED_SOURCES="nvd"
 export VULNQ_KEV_SNAPSHOT="/srv/snapshots"
 export VULNQ_EPSS_SNAPSHOT="/srv/snapshots"
 export VULNQ_SNAPSHOT_MAX_AGE_DAYS="7"   # optional; unset means age is advisory
+
+# Egress proxy. Honoured as the rest of your toolchain honours it, including
+# NO_PROXY exclusions. On a host with no direct route out, these are what
+# gets vulnq to the feeds.
+export HTTPS_PROXY="http://proxy.internal:3128"
+export HTTP_PROXY="http://proxy.internal:3128"
+export NO_PROXY="localhost,127.0.0.1"
 ```
 
 ## Exploitability Enrichment

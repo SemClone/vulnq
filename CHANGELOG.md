@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- HTTP requests now honour `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (#69).
+  aiohttp only reads proxy settings from the environment when its session is
+  built with `trust_env=True`, which vulnq was not doing, so on a host whose
+  only route out is a CONNECT proxy the request never reached the proxy at
+  all: every source failed DNS and the answer came back `is_conclusive:
+  false` with `sources_checked` empty. Behaviour with no proxy variables set
+  is unchanged
+
 ## [2.0.0] - 2026-09-05
 
 ### Removed

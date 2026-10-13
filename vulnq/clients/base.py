@@ -253,7 +253,12 @@ class BaseClient(ABC):
         """Start the aiohttp session."""
         if not self.session:
             timeout_config = aiohttp.ClientTimeout(total=self.timeout)
-            self.session = aiohttp.ClientSession(timeout=timeout_config)
+            # trust_env is what makes aiohttp read HTTP_PROXY, HTTPS_PROXY and
+            # NO_PROXY; it is off by default. Without it, a host whose only
+            # route out is a CONNECT proxy never reaches the proxy at all -
+            # every source fails DNS and the answer comes back inconclusive
+            # with nothing checked.
+            self.session = aiohttp.ClientSession(timeout=timeout_config, trust_env=True)
 
     async def close_session(self):
         """Close the aiohttp session."""
